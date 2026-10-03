@@ -43,6 +43,21 @@ describe('link state', () => {
     await expect(consumeLinkState(db, { state: created.state, contourUser: 'another-user' })).rejects.toMatchObject({ code: 'INVALID_STATE' });
     await expect(consumeLinkState(db, { state: created.state, contourUser })).resolves.toEqual({ projectId, verifier: created.verifier });
   });
+  it('binds browser state to the exact session and rejects a legacy downgrade or replay', async () => {
+    const db = createFakeDb();
+    const created = await createLinkState(db, { contourUser, projectId, sessionId: 'session-original' });
+    expect(db.tables.get('link_states')![0].session_id).toBe('session-original');
+    await expect(consumeLinkState(db, { state: created.state, contourUser, sessionId: 'session-new-signin' })).rejects.toMatchObject({ code: 'INVALID_STATE' });
+    await expect(consumeLinkState(db, { state: created.state, contourUser })).rejects.toMatchObject({ code: 'INVALID_STATE' });
+    await expect(consumeLinkState(db, { state: created.state, contourUser, sessionId: 'session-original' })).resolves.toEqual({ projectId, verifier: created.verifier });
+    await expect(consumeLinkState(db, { state: created.state, contourUser, sessionId: 'session-original' })).rejects.toMatchObject({ code: 'INVALID_STATE' });
+  });
+  it('does not adopt a legacy state into a later browser session', async () => {
+    const db = createFakeDb();
+    const created = await createLinkState(db, { contourUser, projectId });
+    await expect(consumeLinkState(db, { state: created.state, contourUser, sessionId: 'session' })).rejects.toMatchObject({ code: 'INVALID_STATE' });
+    await expect(consumeLinkState(db, { state: created.state, contourUser })).resolves.toEqual({ projectId, verifier: created.verifier });
+  });
   it('rejects expired states at the expiry boundary and unknown states', async () => {
     vi.useFakeTimers(); const db = createFakeDb();
     const created = await createLinkState(db, { contourUser, projectId });

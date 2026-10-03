@@ -1,0 +1,2 @@
+"use client";
+export default function ErrorPage({ reset }: { reset: () => void }) { return <div className="narrow panel"><h1>Unable to load this page</h1><p className="muted" role="alert">Your account could not be loaded. Try again in a moment.</p><div className="actions"><button className="button primary" onClick={reset}>Try again</button><a className="button" href="/projects">Return to projects</a></div></div>; }

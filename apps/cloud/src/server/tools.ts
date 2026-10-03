@@ -1,8 +1,10 @@
+import "server-only";
 import { z } from 'zod';
-import type { CloudDb } from './db.js';
-import { forwardTool, type ProjectRecord } from './forward.js';
-import { listLinks } from './links.js';
-import type { FetchJson } from './pinned-fetch.js';
+import type { CloudDb } from './db';
+import { forwardTool, type ProjectRecord } from './forward';
+import { listLinks } from './links';
+import type { FetchJson } from './pinned-fetch';
+import { rateLimit } from './rate-limit';
 
 export type ToolDef = {
   name: string;
@@ -45,6 +47,7 @@ const schemas = {
   }),
   get_view: z.strictObject({ projectId, surfaceId, proposalId: z.uuid().optional() }),
 };
+export const cloudToolSchemas = schemas;
 
 function objectResult(result: unknown): result is Record<string, unknown> {
   return typeof result === 'object' && result !== null && !Array.isArray(result);
@@ -59,6 +62,7 @@ export function cloudTools(deps: {
   db: CloudDb;
   fetchJson: FetchJson;
   clientId: string;
+  clientIdFor?: (project: ProjectRecord) => Promise<string>;
   appUrl: string;
 }): ToolDef[] {
   const { db } = deps;
@@ -85,7 +89,7 @@ export function cloudTools(deps: {
 
   async function verifiedProject(id: string): Promise<ProjectRecord> {
     const { data, error } = await db.from('projects')
-      .select('id,name,company,mcp_resource,as_issuer,token_endpoint,revocation_endpoint')
+      .select('id,name,company,mcp_resource,as_issuer,token_endpoint,revocation_endpoint,registration_endpoint,dcr_client_id')
       .eq('id', id).eq('status', 'verified').maybeSingle();
     if (error) throw new ToolError('PROJECT_UNAVAILABLE', 'Project unavailable');
     if (!data) throw new ToolError('NOT_FOUND', 'Project not found');
@@ -93,6 +97,7 @@ export function cloudTools(deps: {
       id: data.id, name: data.name, company: data.company,
       mcpResource: data.mcp_resource, asIssuer: data.as_issuer,
       tokenEndpoint: data.token_endpoint, revocationEndpoint: data.revocation_endpoint,
+      registrationEndpoint: data.registration_endpoint, dcrClientId: data.dcr_client_id,
     };
   }
 
@@ -104,7 +109,9 @@ export function cloudTools(deps: {
     if (!link) throw new ToolError('NOT_FOUND', 'Project not found');
     const project = await verifiedProject(id as string);
     if (link.status !== 'active') throw new ToolError('LINK_REQUIRED', 'Call connect_project to reconnect this project');
-    const { result, isError } = await forwardTool(deps, {
+    rateLimit(`${ctx.contourUser}:${project.id}`, 'project');
+    const clientId = deps.clientIdFor ? await deps.clientIdFor(project) : deps.clientId;
+    const { result, isError } = await forwardTool({ ...deps, clientId }, {
       contourUser: ctx.contourUser, project, tool: name, args: projectArgs,
     });
     if (name === 'read_component_data') {

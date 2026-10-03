@@ -1,0 +1,1 @@
+export default function Loading() { return <div className="loading-shell" role="status" aria-busy="true"><p>Loading your Contour account…</p><div className="skeleton title" aria-hidden="true"/><div className="skeleton" aria-hidden="true"/><div className="skeleton" aria-hidden="true"/></div>; }
