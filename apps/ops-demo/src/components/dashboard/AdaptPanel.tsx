@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { overviewManifest } from "@/host/manifest";
 import type { DensityPreference, HelpPreference, ProposeRequest, ProposeResult, UserPreferences } from "@contour/sdk/core";
 import { apiPost, newKey, type ApiError } from "@/components/api";
@@ -14,6 +13,7 @@ import { HELP_LABEL, expertiseLabel, taskLabel } from "./labels";
 const MAX_NOTE = overviewManifest.limits.maxNoteLength;
 
 type Outcome =
+  | { kind: "ready"; proposalId: string }
   | { kind: "keep"; reason: string }
   | { kind: "ask"; question: string; choices: Record<string, readonly string[]> }
   | { kind: "error"; error: ApiError; status: number };
@@ -23,13 +23,13 @@ type Props = {
   baseRevision: number;
   prefs: UserPreferences;
   credits: Credits;
+  resolvedProposal: { id: string; outcome: "accepted" | "kept" } | null;
   onClose: () => void;
 };
 
 /** In-app path to the same broker the agent uses: explicit task + expertise → READY / KEEP / ASK. */
-export function AdaptPanel({ id, baseRevision, prefs, credits, onClose }: Props) {
+export function AdaptPanel({ id, baseRevision, prefs, credits, resolvedProposal, onClose }: Props) {
   const csrf = useCsrf();
-  const router = useRouter();
   const formId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -74,12 +74,11 @@ export function AdaptPanel({ id, baseRevision, prefs, credits, onClose }: Props)
       return;
     }
     const r = res.data;
+    setBusy(false);
     if (r.outcome === "READY") {
-      const path = previewPath(r.previewUrl, r.proposalId);
-      router.push(path);
+      setOutcome({ kind: "ready", proposalId: r.proposalId });
       return;
     }
-    setBusy(false);
     if (r.outcome === "KEEP") setOutcome({ kind: "keep", reason: r.reason });
     else setOutcome({ kind: "ask", question: r.question, choices: r.supportedChoices });
   }
@@ -212,20 +211,14 @@ export function AdaptPanel({ id, baseRevision, prefs, credits, onClose }: Props)
       </form>
 
       <div ref={resultRef} tabIndex={-1} aria-live="polite" className="mt-4 empty:hidden">
-        {outcome && <OutcomeView outcome={outcome} onChoice={applyChoice} />}
+        {outcome?.kind === "ready" && resolvedProposal?.id === outcome.proposalId ? (
+          <p className="text-sm text-ink-2">
+            {resolvedProposal.outcome === "accepted" ? "Proposed view accepted." : "Kept your current view."}
+          </p>
+        ) : outcome ? <OutcomeView outcome={outcome} onChoice={applyChoice} /> : null}
       </div>
     </section>
   );
-}
-
-function previewPath(previewUrl: string, proposalId: string): string {
-  try {
-    const u = new URL(previewUrl, window.location.origin);
-    if (u.pathname.startsWith("/preview/")) return u.pathname;
-  } catch {
-    // fall through
-  }
-  return `/preview/${encodeURIComponent(proposalId)}`;
 }
 
 function choiceLabel(key: string, value: string): string {
@@ -236,6 +229,20 @@ function choiceLabel(key: string, value: string): string {
 }
 
 function OutcomeView({ outcome, onChoice }: { outcome: Outcome; onChoice: (k: string, v: string) => void }) {
+  if (outcome.kind === "ready") {
+    return (
+      <div className="notice notice-info">
+        <IconInfo size={18} />
+        <div>
+          <p className="font-semibold">Your proposed view is ready below.</p>
+          <p className="text-ink-2">Review it in place, then accept or keep your current view. Nothing is saved until you accept.</p>
+          <Link className="btn btn-sm btn-quiet mt-2" href={`/preview/${encodeURIComponent(outcome.proposalId)}`}>
+            See full comparison
+          </Link>
+        </div>
+      </div>
+    );
+  }
   if (outcome.kind === "keep") {
     return (
       <div className="notice notice-info">

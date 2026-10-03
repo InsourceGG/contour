@@ -2,9 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet } from "@/components/api";
-
-const POLL_MS = 15_000;
 
 function isEditing(): boolean {
   const el = document.activeElement as HTMLElement | null;
@@ -20,42 +17,50 @@ function isEditing(): boolean {
 export type ViewPoller = { pendingRevision: number | null; applyNow: () => void };
 
 /**
- * Safe boundary for layout swaps: poll the saved revision; if it changed
+ * Safe boundary for layout swaps: observe the live hook's saved revision; if it changed
  * (e.g. accepted in another tab) refresh, unless the user is typing, in
- * which case defer and offer "apply now".
+ * which case defer until blur or an explicit review.
  */
-export function useViewPoller(currentRevision: number): ViewPoller {
+export function useLiveRevision(currentRevision: number, observedRevision: number | null): ViewPoller {
   const router = useRouter();
   const [pending, setPending] = useState<number | null>(null);
-  const revisionRef = useRef(currentRevision);
+  const refreshingRef = useRef<number | null>(null);
 
   useEffect(() => {
-    revisionRef.current = currentRevision;
-  }, [currentRevision]);
-
-  useEffect(() => {
-    let stopped = false;
-    async function tick() {
-      if (document.hidden) return;
-      const res = await apiGet<{ revision: number }>("/api/host/view");
-      if (stopped || !res.ok || typeof res.data?.revision !== "number") return;
-      if (res.data.revision === revisionRef.current) return;
-      if (isEditing()) setPending(res.data.revision);
-      else router.refresh();
+    if (observedRevision === null || observedRevision <= currentRevision) return;
+    let cancelled = false;
+    function review() {
+      if (cancelled) return;
+      if (isEditing()) {
+        setPending(observedRevision);
+      } else if (refreshingRef.current !== observedRevision) {
+        refreshingRef.current = observedRevision;
+        setPending(null);
+        router.refresh();
+      }
     }
-    const id = window.setInterval(tick, POLL_MS);
-    return () => {
-      stopped = true;
-      window.clearInterval(id);
+    const id = window.setTimeout(review, 0);
+    let blurTimer: number | undefined;
+    const onBlur = () => {
+      window.clearTimeout(blurTimer);
+      blurTimer = window.setTimeout(review, 0);
     };
-  }, [router]);
+    document.addEventListener("focusout", onBlur);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+      window.clearTimeout(blurTimer);
+      document.removeEventListener("focusout", onBlur);
+    };
+  }, [currentRevision, observedRevision, router]);
 
   const applyNow = useCallback(() => {
     setPending(null);
+    refreshingRef.current = observedRevision;
     router.refresh();
-  }, [router]);
+  }, [observedRevision, router]);
 
-  return { pendingRevision: pending !== null && pending !== currentRevision ? pending : null, applyNow };
+  return { pendingRevision: pending !== null && pending > currentRevision ? pending : null, applyNow };
 }
 
 export function SafeBoundaryBar({ poller }: { poller: ViewPoller }) {
@@ -65,10 +70,10 @@ export function SafeBoundaryBar({ poller }: { poller: ViewPoller }) {
       {visible && (
         <div className="flex max-w-xl flex-wrap items-center gap-3 rounded-xl bg-ink px-4 py-3 text-surface shadow-[0_12px_32px_rgb(19_33_43/0.3)]">
           <p className="text-sm">
-            <strong>A new view is ready.</strong> We held it so your typing isn&apos;t interrupted.
+            <strong>Your saved view changed.</strong> Review when you&apos;re done typing.
           </p>
           <button type="button" className="btn btn-sm btn-primary" onClick={poller.applyNow}>
-            Apply now
+            Review saved view
           </button>
         </div>
       )}
