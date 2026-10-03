@@ -1,0 +1,32 @@
+{
+  "client": "Claude Code 2.1.288 (Claude Code) (headless, -p)",
+  "deployment": "https://contour-sdk.vercel.app",
+  "user": "sam@contour.demo",
+  "phase1Tools": [
+    "ToolSearch",
+    "mcp__contour__describe_surface",
+    "mcp__contour__read_component_data",
+    "mcp__contour__read_component_data",
+    "mcp__contour__propose_view"
+  ],
+  "proposal": {
+    "outcome": "READY",
+    "proposalId": "08f6713c-5588-4692-aadb-45be659d0139",
+    "previewUrl": "https://contour-sdk.vercel.app/preview/08f6713c-5588-4692-aadb-45be659d0139",
+    "baseRevision": 0,
+    "alertsSeen": 2,
+    "tasksSeen": 2
+  },
+  "phase2Tools": [
+    "ToolSearch",
+    "mcp__contour__get_view"
+  ],
+  "savedView": {
+    "revision": 1,
+    "source": "saved",
+    "proposalStatus": "APPLIED",
+    "templateId": "focus-triage",
+    "densityToken": "density.compact"
+  },
+  "at": "2026-10-03T21:38:27.261Z"
+}

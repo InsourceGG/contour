@@ -47,7 +47,9 @@ export default async function ConsolePage() {
   }
 
   const d = await getConsoleData();
-  const money = (v: number | null) => (v === null ? "—" : formatMoney(v, d.cost.currency.toUpperCase()));
+  // Model costs are fractions of a cent; show enough precision to be honest.
+  const money = (v: number | null) =>
+    v === null ? "—" : v > 0 && v < 0.01 ? `$${v.toFixed(6)}` : formatMoney(v, d.cost.currency.toUpperCase());
 
   return (
     <AppShell user={user}>

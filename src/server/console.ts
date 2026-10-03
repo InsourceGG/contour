@@ -86,8 +86,17 @@ export async function getConsoleData(): Promise<ConsoleData> {
   const users = new Set(d.map((x) => x.subject_id));
   const count = (pred: (x: (typeof d)[number]) => boolean) => d.filter(pred).length;
   const applied = p.filter((x) => x.status === "APPLIED").length;
-  const undos = a.filter((x) => x.kind === "view_undo").length;
-  const resets = a.filter((x) => x.kind === "view_reset").length;
+  const countKind = async (kind: string) => {
+    const { count } = await db
+      .from("audit_events")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", t)
+      .eq("app_id", APP_ID)
+      .eq("kind", kind)
+      .gte("created_at", since);
+    return count ?? 0;
+  };
+  const [undos, resets, commits] = await Promise.all([countKind("view_undo"), countKind("view_reset"), countKind("view_committed")]);
   const totalCost = d.reduce((s, x) => s + (x.provider_cost ? Number(x.provider_cost) : 0), 0);
 
   // Task × expertise cohorts with minimum-cohort suppression.
@@ -154,7 +163,8 @@ export async function getConsoleData(): Promise<ConsoleData> {
     },
     rates: {
       acceptance: p.length ? applied / p.length : null,
-      undo: applied ? undos / applied : null,
+      // Both sides from the audit log so deleted/expired proposals can't skew it.
+      undo: commits ? undos / commits : null,
       fallback: d.length ? count((x) => x.provider_status !== "ok" && x.provider_status !== "skipped") / d.length : null,
     },
     latency: {
