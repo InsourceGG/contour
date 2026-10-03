@@ -1,0 +1,15 @@
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { z } from 'zod';
+import { requireSession } from '@/lib/session';
+import { getTicket, getTicketReplies } from '@/data/tickets';
+import { SubmitButton } from '@/components/submit-button';
+export default async function TicketDetail({ params }: { params: Promise<{ id: string }> }) {
+  const session = await requireSession();
+  const { id } = await params;
+  if (!z.uuid().safeParse(id).success) notFound();
+  const ticket = await getTicket(session, id);
+  if (!ticket) notFound();
+  const replies = await getTicketReplies(session, id);
+  return <><Link className="back-link" href="/desk">← Back to desk</Link><div className="page-heading"><div><h1>{ticket.subject}</h1><p>#{ticket.number} · {ticket.customerName} · {ticket.customerCompany}</p></div><span className="scope-badge">{ticket.team}</span></div><div className="ticket-detail-layout"><div className="stack-form"><section className="settings-section"><h2>Conversation</h2><article className="thread-message"><div className="thread-message-heading"><strong>{ticket.customerName}</strong><time dateTime={ticket.createdAt}>{new Date(ticket.createdAt).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} UTC</time></div><p>{ticket.description}</p></article>{replies.map(reply => <article className="thread-message" key={reply.id}><div className="thread-message-heading"><strong>{reply.authorName}</strong><time dateTime={reply.createdAt}>{new Date(reply.createdAt).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} UTC</time></div><p>{reply.body}</p></article>)}</section><section className="settings-section"><h2>Reply to {ticket.customerName.split(' ')[0]}</h2><form action={`/api/tickets/${id}/reply`} method="post" className="stack-form"><div className="field"><label htmlFor="body">Reply</label><textarea id="body" name="body" rows={5} required maxLength={5000} placeholder="Share an update and the next step." aria-describedby="reply-note"/><p id="reply-note" className="field-hint">Your reply is saved in the customer conversation.</p></div><div><SubmitButton pendingText="Saving reply…">Save reply</SubmitButton></div></form></section></div><aside className="settings-section ticket-facts"><h2>Ticket details</h2><dl><div><dt>Status</dt><dd>{ticket.status}</dd></div><div><dt>Priority</dt><dd>{ticket.priority}</dd></div><div><dt>Channel</dt><dd>{ticket.channel}</dd></div><div><dt>Assignee</dt><dd>{ticket.assigneeName || 'Unassigned'}</dd></div><div><dt>Response due</dt><dd><time dateTime={ticket.dueAt}>{new Date(ticket.dueAt).toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} UTC</time></dd></div></dl><form action={`/api/tickets/${id}/assign`} method="post"><button type="submit" className="button" disabled={ticket.assigneeId === session.userId}>{ticket.assigneeId === session.userId ? 'Assigned to you' : 'Assign to me'}</button></form></aside></div></>;
+}
