@@ -351,3 +351,6 @@ revoke all on all tables in schema cloud from anon, authenticated;
   - §11 testing: each task plus Task 10
   - §12 demo: Task 10
 - **Deviations recorded:** forwarding goes over the project's MCP endpoint, and the store is named `supabaseStore`.
+
+### Task 11: Custom mods (added by user decision 3 Oct, after Tasks 1–10)
+Agents compose **new** widgets from company-registered primitives (card, stat, table, list, line/bar chart, badge, text, filter chips), rendered with the company design system, bound only to company-approved data fields with whitelisted operations (filter, sort, group, count/sum/avg, top-N, time bucket). Setup (the `contour-setup` skill) declares the **data catalog**: which fields each reader exposes for mods, their types/semantics, and allowed operations. The MCP exposes `describe_mod_capabilities` (primitives + catalog + ops + limits) so an agent can discover what is even available, then `propose_mod` (validated mod tree → READY proposal → same preview/Accept in the company app). Console shows mods created/kept and lets operators promote a mod into an approved component. Requires its own mini-spec (brainstorm → spec) before implementation; may be delegated to Codex.
