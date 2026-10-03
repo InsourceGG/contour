@@ -76,6 +76,17 @@ export function createContourHandlers(server: ContourServer, opts: ContourHandle
     }
   }
 
+  async function hostLive(): Promise<Response> {
+    try {
+      const vc = server.contextFromUser(await server.requireUser());
+      return NextResponse.json(await broker.getLive(vc), { headers: { "Cache-Control": "no-store" } });
+    } catch (err) {
+      const response = errorResponse(err);
+      response.headers.set("Cache-Control", "no-store");
+      return response;
+    }
+  }
+
   return {
     // OAuth discovery
     "GET /.well-known/oauth-protected-resource": async (_req, ctx) =>
@@ -103,6 +114,7 @@ export function createContourHandlers(server: ContourServer, opts: ContourHandle
 
     // Host routes (verified session + same origin + CSRF)
     "GET /api/host/view": () => hostView(),
+    "GET /api/host/live": () => hostLive(),
     "PUT /api/host/preferences": (req) => server.hostMutation(req, (vc, body) => broker.updatePreferences(vc, body)),
     "POST /api/host/proposals": (req) => server.hostMutation(req, (vc, body) => broker.proposeView(vc, body)),
     "POST /api/host/proposals/[id]/apply": async (req, ctx) => {

@@ -179,6 +179,18 @@ export const AGENT_SCOPES: readonly Scope[] = ["view:read", "data:read", "view:p
 
 export type ProposalStatus = "READY" | "APPLIED" | "REJECTED" | "EXPIRED" | "STALE" | "INVALID";
 
+/** Presentation-only progress for an adaptation; it grants no commit authority. */
+export type LiveJob = {
+  id: string;
+  status: "working" | "ready" | "kept" | "asked" | "failed";
+  task: string;
+  expertise: string;
+  changedComponents: string[];
+  message: string | null;
+  startedAt: string;
+  updatedAt: string;
+};
+
 export type ChangeItem = {
   kind: "template" | "density" | "visibility" | "variant" | "region" | "order" | "settings";
   componentId?: string;

@@ -7,6 +7,7 @@ import type {
   Candidate,
   ChangeItem,
   JsonValue,
+  LiveJob,
   ManualPin,
   Proposal,
   ProposalStatus,
@@ -54,6 +55,9 @@ export type Membership = {
 
 export type RpcResult = { ok: boolean; code?: string; [k: string]: unknown };
 
+export type StoredJob = LiveJob & { proposalId: string | null };
+export type JobPatch = Partial<Pick<StoredJob, "status" | "proposalId" | "changedComponents" | "message">>;
+
 export type DecisionEvent = {
   id: string;
   jobId: string;
@@ -97,6 +101,10 @@ export interface ContourStore {
   getPreferences(owner: Owner): Promise<UserPreferences>;
   savePreferences(owner: Owner, prefs: UserPreferences): Promise<void>;
   getProposal(owner: Owner, id: string): Promise<Proposal | null>;
+  createJob(owner: Owner, input: { clientId: string; task: string; expertise: string }): Promise<string>;
+  updateJob(owner: Owner, id: string, patch: JobPatch): Promise<void>;
+  /** Most recent job started since the supplied epoch milliseconds. */
+  getLatestJob(owner: Owner, sinceMs: number): Promise<StoredJob | null>;
   findProposalByRequest(owner: Owner, requestId: string): Promise<(Proposal & { requestHash: string }) | null>;
   listProposals(owner: Owner, limit: number): Promise<Proposal[]>;
   setProposalStatus(owner: Owner, id: string, from: ProposalStatus, to: ProposalStatus, reason: string): Promise<boolean>;
@@ -240,6 +248,13 @@ export type PreviewData = {
   pins: ManualPin[];
 };
 
+export type LiveData = {
+  revision: number;
+  configHash: string;
+  job: LiveJob | null;
+  proposal: PreviewData | null;
+};
+
 export function createAdaptiveBroker(opts: BrokerOptions) {
   const { registry, store, selector } = opts;
   const now = opts.now ?? (() => new Date());
@@ -368,7 +383,7 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
       supportedPreferences: { density: ["comfortable", "compact"], help: ["auto", "show", "hide"] },
       limits: { maxNoteLength: manifest.limits.maxNoteLength, proposalTtlSeconds: manifest.limits.proposalTtlSeconds },
       previewSemantics:
-        "propose_view never changes the user's screen. It returns a preview URL that the signed-in user opens in the host app to Accept or Keep current. Only that authenticated Accept can save a view. Each READY proposal consumes one prepaid adaptation credit.",
+        "propose_view prepares a pending preview that may appear live in the host dashboard. It returns a preview URL for a full comparison. Nothing is saved until the signed-in user chooses Accept in the host app; the user can also Keep current. Agents cannot commit. Each READY proposal consumes one prepaid adaptation credit.",
     };
   }
 
@@ -465,7 +480,7 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
     }
 
     const decisionId = randomUUID();
-    const jobId = randomUUID();
+    let jobId: string = randomUUID();
     const prefs = await store.getPreferences(owner);
     const inputs: Record<string, JsonValue> = {
       task: req.task.id,
@@ -526,23 +541,40 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
       };
     }
 
-    // Reserve one prepaid credit for this adaptation job.
-    const reservation = await store.reserveCredit(owner, jobId);
-    if (!reservation.ok) {
-      throw new ContourError("PAYMENT_REQUIRED", "No adaptation credit available. Buy one in the host app.", {
-        billingUrl: `${opts.appUrl}/billing`,
-      });
+    // Progress is best-effort and begins only after deterministic clarification.
+    // Do not log provider errors or request content: both can contain secrets.
+    try {
+      jobId = await store.createJob(owner, { clientId: ctx.clientId, task: task.id, expertise: expertise.id });
+      baseEvent.jobId = jobId;
+    } catch {
+      console.error("[contour] createJob failed");
     }
+    const updateJob = async (patch: JobPatch) => {
+      try {
+        await store.updateJob(owner, jobId, patch);
+      } catch {
+        console.error("[contour] updateJob failed");
+      }
+    };
 
+    let reserved = false;
     let released = false;
     const release = async () => {
-      if (!released) {
+      if (reserved && !released) {
         released = true;
         await store.releaseCredit(jobId);
       }
     };
 
     try {
+      // Reserve one prepaid credit for this adaptation job.
+      const reservation = await store.reserveCredit(owner, jobId);
+      if (!reservation.ok) {
+        throw new ContourError("PAYMENT_REQUIRED", "No adaptation credit available. Buy one in the host app.", {
+          billingUrl: `${opts.appUrl}/billing`,
+        });
+      }
+      reserved = true;
       const gen = generateCandidates(manifest, policy, {
         task: req.task.id,
         preferences: req.preferences ?? {},
@@ -555,6 +587,7 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
       if (candidates.length === 0) {
         await release();
         const reason = gen.pinConflicts.length ? "pin_conflict" : "no_valid_candidates";
+        await updateJob({ status: "asked", message: "Choose another task or adjust your manual pins." });
         await store.recordDecision({
           ...baseEvent,
           modelVersion: null,
@@ -648,6 +681,10 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
 
       if (outcome !== "READY" || !chosen) {
         await release();
+        await updateJob({
+          status: selection.status !== "ok" ? "failed" : outcome === "ASK" ? "asked" : "kept",
+          message: outcome === "ASK" ? "Clarify the task and expertise level for this view." : keepMessage(reason),
+        });
         await store.recordDecision({
           ...baseEvent,
           ...usageBase,
@@ -741,6 +778,14 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
         rationale,
         proposalId,
       });
+      const changedComponents = manifest.components
+        .filter((component) => {
+          const before = snapshot.config.placements.find((p) => p.componentId === component.id);
+          const after = final.config.placements.find((p) => p.componentId === component.id);
+          return hashJson(before ?? null) !== hashJson(after ?? null);
+        })
+        .map((component) => component.id);
+      await updateJob({ status: "ready", proposalId, changedComponents, message: null });
       return {
         outcome: "READY",
         proposalId,
@@ -755,6 +800,7 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
       };
     } catch (err) {
       await release().catch(() => {});
+      await updateJob({ status: "failed", message: "The view could not be prepared. Your current view is unchanged." });
       throw err;
     }
   }
@@ -762,7 +808,8 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
   // --------------------------------------------------- host-only operations
 
   async function getPreview(ctx: VerifiedContext, proposalId: string): Promise<PreviewData> {
-    requireHost(ctx);
+    if (ctx.channel !== "host") throw new ContourError("FORBIDDEN", "This operation is only available in the host app");
+    requireScope(ctx, "view:read");
     await requireMembership(ctx);
     const manifest = manifestFor(ctx);
     const owner = ownerOf(ctx);
@@ -818,6 +865,38 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
       changes: diffConfigs(manifest, current.config, p.config),
       pins: prefs.pins,
     };
+  }
+
+  async function getLive(ctx: VerifiedContext): Promise<LiveData> {
+    if (ctx.channel !== "host") throw new ContourError("FORBIDDEN", "This operation is only available in the host app");
+    requireScope(ctx, "view:read");
+    await requireMembership(ctx);
+    await rateLimit(ctx, "live", 150, 60);
+    const current = await loadSnapshot(ctx, manifestFor(ctx));
+    const owner = ownerOf(ctx);
+    const latest = await store.getLatestJob(owner, now().getTime() - 10 * 60 * 1000);
+    let proposal: PreviewData | null = null;
+    if (latest?.status === "ready" && latest.proposalId) {
+      try {
+        const preview = await getPreview(ctx, latest.proposalId);
+        if (preview.state === "ready" && preview.proposal.status === "READY") proposal = preview;
+      } catch (error) {
+        // A deleted proposal cannot be previewed; other errors must remain visible.
+        if (!(error instanceof ContourError) || error.code !== "NOT_FOUND") throw error;
+      }
+    }
+    // Omit internal proposal linkage and any future store-only fields.
+    const job: LiveJob | null = latest ? {
+      id: latest.id,
+      status: latest.status,
+      task: latest.task,
+      expertise: latest.expertise,
+      changedComponents: latest.changedComponents,
+      message: latest.message,
+      startedAt: latest.startedAt,
+      updatedAt: latest.updatedAt,
+    } : null;
+    return { revision: current.revision, configHash: current.configHash, job, proposal };
   }
 
   async function applyProposal(ctx: VerifiedContext, raw: unknown) {
@@ -1024,6 +1103,7 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
     proposeView,
     getView,
     getPreview,
+    getLive,
     applyProposal,
     rejectProposal,
     undo,
