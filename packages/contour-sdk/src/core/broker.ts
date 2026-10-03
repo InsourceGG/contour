@@ -113,7 +113,8 @@ export interface ContourStore {
   commitSnapshot(params: Record<string, JsonValue>): Promise<RpcResult>;
   reserveCredit(owner: Owner, jobId: string): Promise<RpcResult>;
   releaseCredit(jobId: string): Promise<RpcResult>;
-  creditBalance(owner: Owner): Promise<{ available: number; reserved: number; consumed: number }>;
+  /** `available` is null and `unmetered` true when the store runs without billing. */
+  creditBalance(owner: Owner): Promise<{ available: number | null; reserved: number; consumed: number; unmetered?: boolean }>;
   recordDecision(event: DecisionEvent): Promise<void>;
   recordUsage(event: {
     jobId: string;
@@ -559,6 +560,8 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
 
     let reserved = false;
     let released = false;
+    // Set when the store runs without billing: nothing is reserved or consumed.
+    let unmetered = false;
     const release = async () => {
       if (reserved && !released) {
         released = true;
@@ -567,14 +570,16 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
     };
 
     try {
-      // Reserve one prepaid credit for this adaptation job.
+      // Reserve one prepaid credit for this adaptation job (credits mode only;
+      // an unmetered store answers status "unmetered" without reserving).
       const reservation = await store.reserveCredit(owner, jobId);
       if (!reservation.ok) {
         throw new ContourError("PAYMENT_REQUIRED", "No adaptation credit available. Buy one in the host app.", {
           billingUrl: `${opts.appUrl}/billing`,
         });
       }
-      reserved = true;
+      unmetered = reservation.status === "unmetered";
+      reserved = !unmetered;
       const gen = generateCandidates(manifest, policy, {
         task: req.task.id,
         preferences: req.preferences ?? {},
@@ -796,7 +801,7 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
         previewUrl: `${opts.appUrl}/preview/${proposalId}`,
         expiresAt,
         decisionId,
-        creditConsumed: !created.replayed,
+        creditConsumed: !unmetered && !created.replayed,
       };
     } catch (err) {
       await release().catch(() => {});

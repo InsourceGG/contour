@@ -36,6 +36,8 @@ export const contour = defineContourServer({
 });
 ```
 
+Billing mode: `billing` defaults to `"credits"`, where every READY proposal consumes one prepaid credit (Stripe checkout grants them) and a missing credit is `PAYMENT_REQUIRED`. Set `billing: "none"` for a company that does not meter: the store reserves and consumes nothing, `creditBalance` reports `{ available: null, unmetered: true }`, and `contour_create_proposal` skips the credit check when the payload says `billing: "none"`. This requires the schema to have the current template installed, so re-run `contour-migrate --apply` after upgrading the SDK. Leave it unset for credit-metered apps.
+
 Read config lazily through getters, as `apps/ops-demo/src/server/env.ts` does. Do not evaluate `new URL(process.env...)` or required secrets at import time; validate them when server config is used. In `db.ts`, implement host helper `getAppDb()` to create/cache the unscoped client only when called. Build trustedClients only when a Cloud origin is configured; use an empty array when registration was skipped. Never treat a missing secret as an empty string. `db.ts` is host integration code, not a new SDK API.
 
 In `broker.ts`, call `defineAdaptiveApp([manifest], { readerIds: new Set(readers.keys()), implementedComponentIds: componentIds })`, then `createAdaptiveBroker({ registry, policies: { desk: policy }, readers, store: contour.store, selector, confidenceFloor, appUrl })` from `@contour/sdk/core`. `createJevSelector` from `@contour/sdk/jev` takes getters:

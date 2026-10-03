@@ -59,7 +59,7 @@ export default async function BillingPage({ searchParams }: PageProps<"/billing"
           </p>
         </header>
 
-        {checkout === "success" && <CheckoutStatus initialAvailable={balance.available} latestOrderGranted={orders[0]?.status === "granted"} />}
+        {checkout === "success" && <CheckoutStatus initialAvailable={balance.available ?? 0} latestOrderGranted={orders[0]?.status === "granted"} />}
         {(checkout === "cancel" || checkout === "canceled") && (
           <p role="status" className="notice notice-info">
             Checkout was canceled. You weren&apos;t charged.

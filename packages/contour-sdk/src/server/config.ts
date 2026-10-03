@@ -66,6 +66,11 @@ export type ContourServerConfig = {
   agentAccessEnabled(tenantId: string, appId: string): Promise<boolean>;
   /** Client ID Metadata Document URLs shown as verified on consent (e.g. Contour Cloud). */
   trustedClients?: readonly string[];
+  /**
+   * "credits" (default): each READY proposal consumes one prepaid credit.
+   * "none": unmetered; no credits are required, reserved or consumed.
+   */
+  billing?: "credits" | "none";
   consent?: { productName: string; dataCategories: string[]; brandColor?: string };
 };
 
@@ -126,6 +131,7 @@ export function defineContourServer(cfg: ContourServerConfig): ContourServer {
   const store = supabaseStore({
     client: () => cfg.db,
     schema: cfg.schema,
+    billing: cfg.billing ?? "credits",
     agentAccessEnabled: (tenantId, appId) => cfg.agentAccessEnabled(tenantId, appId),
     // Resolved per call so a getter-backed identity config stays lazy. The
     // identity adapter must not call `store.getMembership` (it would recurse).

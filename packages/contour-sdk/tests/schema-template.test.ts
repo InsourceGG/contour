@@ -11,6 +11,21 @@ describe("contour schema template", () => {
     expect(sql).toMatch(/revoke all on all tables in schema northwind from anon, authenticated/);
   });
 
+  it("contour_create_proposal skips credit lookup and consumption when billing is none", () => {
+    const sql = renderSchema("northwind");
+    const start = sql.indexOf("create or replace function northwind.contour_create_proposal");
+    const body = sql.slice(start, sql.indexOf("$$;", sql.indexOf("as $$", start) + 5));
+    expect(body).toContain("p->>'billing'");
+    expect(body).toMatch(/v_unmetered boolean := coalesce\(p->>'billing', 'credits'\) = 'none'/);
+    // Lookup and consumption are both guarded by the unmetered flag.
+    expect(body).toMatch(/if not v_unmetered then\s+select \* into v_credit from northwind\.credits[\s\S]*?'PAYMENT_REQUIRED'/);
+    expect(body).toMatch(/if not v_unmetered then\s+update northwind\.credits set status = 'consumed'[\s\S]*?'consume'/);
+    expect(body).toContain("case when v_unmetered then null else v_credit.id end");
+    // The idempotency replay and audit row stay on both paths.
+    expect(body).toContain("'IDEMPOTENCY_CONFLICT'");
+    expect(body).toContain("'proposal_created'");
+  });
+
   it("leaves no unrendered placeholders", () => {
     expect(renderSchema("cloud")).not.toMatch(/\{\{|\}\}/);
   });

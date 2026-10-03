@@ -41,7 +41,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
         snapshot={snapshot}
         data={data}
         prefs={prefs}
-        credits={credits}
+        credits={{ ...credits, available: credits.available ?? 0 }}
         proposals={summaries}
         appliedRevision={applied}
       />

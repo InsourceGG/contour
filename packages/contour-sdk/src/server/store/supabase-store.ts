@@ -25,6 +25,12 @@ export type SupabaseStoreOptions = {
    * store reads the `memberships` table in `schema` (ops-demo's behaviour).
    */
   getMembership?: (subjectId: string, tenantId: string, appId: string) => Promise<Membership | null>;
+  /**
+   * "credits" (default): every READY proposal consumes one prepaid credit.
+   * "none": unmetered. No credit is reserved or consumed, and the RPC payload
+   * carries `billing: "none"` so the database skips the credit check too.
+   */
+  billing?: "credits" | "none";
 };
 
 function fail(op: string, error: { message: string } | null): never {
@@ -100,6 +106,7 @@ function toProposal(r: ProposalRow): Proposal & { requestHash: string } {
 }
 
 export function supabaseStore(opts: SupabaseStoreOptions): ContourStore {
+  const unmetered = opts.billing === "none";
   const db = () => (typeof opts.client === "function" ? opts.client() : opts.client).schema(opts.schema);
 
   async function rpc(fn: string, args: Record<string, unknown>): Promise<RpcResult> {
@@ -341,14 +348,17 @@ export function supabaseStore(opts: SupabaseStoreOptions): ContourStore {
       return (data ?? []).length > 0;
     },
 
-    createProposal: (record) => rpc("contour_create_proposal", { p: record }),
+    createProposal: (record) => rpc("contour_create_proposal", { p: unmetered ? { ...record, billing: "none" } : record }),
     applyProposal: (params) => rpc("contour_apply_proposal", { p: params }),
     commitSnapshot: (params) => rpc("contour_commit_snapshot", { p: params }),
-    reserveCredit: (owner, jobId) =>
-      rpc("contour_reserve_credit", { p_tenant: owner.tenantId, p_app: owner.appId, p_subject: owner.subjectId, p_job: jobId }),
-    releaseCredit: (jobId) => rpc("contour_release_credit", { p_job: jobId }),
+    reserveCredit: async (owner, jobId) =>
+      unmetered
+        ? { ok: true, creditId: null, status: "unmetered" }
+        : rpc("contour_reserve_credit", { p_tenant: owner.tenantId, p_app: owner.appId, p_subject: owner.subjectId, p_job: jobId }),
+    releaseCredit: async (jobId) => (unmetered ? { ok: true, released: false } : rpc("contour_release_credit", { p_job: jobId })),
 
     async creditBalance(owner) {
+      if (unmetered) return { available: null, reserved: 0, consumed: 0, unmetered: true };
       const { data, error } = await db()
         .from("credits")
         .select("status")

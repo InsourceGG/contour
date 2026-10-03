@@ -482,7 +482,9 @@ $$;
 
 -- Persist a READY proposal and consume the job's reserved credit in one
 -- transaction. Idempotent per (owner, request_id): identical payload returns
--- the existing proposal, a different payload is rejected.
+-- the existing proposal, a different payload is rejected. When the payload
+-- carries billing = 'none' (unmetered companies) the credit lookup and
+-- consumption are skipped entirely and no PAYMENT_REQUIRED is possible.
 create or replace function {{schema}}.contour_create_proposal(p jsonb) returns jsonb
 language plpgsql
 set search_path = ''
@@ -493,6 +495,7 @@ declare
   v_id uuid;
   v_job uuid := (p->>'job_id')::uuid;
   v_subject text := p->>'subject_id';
+  v_unmetered boolean := coalesce(p->>'billing', 'credits') = 'none';
 begin
   select * into v_existing from {{schema}}.proposals
   where tenant_id = p->>'tenant_id' and app_id = p->>'app_id' and subject_id = v_subject
@@ -504,10 +507,12 @@ begin
     return jsonb_build_object('ok', false, 'code', 'IDEMPOTENCY_CONFLICT');
   end if;
 
-  select * into v_credit from {{schema}}.credits where job_id = v_job for update;
-  if not found or v_credit.status <> 'reserved'
-     or v_credit.subject_id <> v_subject or v_credit.tenant_id <> p->>'tenant_id' or v_credit.app_id <> p->>'app_id' then
-    return jsonb_build_object('ok', false, 'code', 'PAYMENT_REQUIRED');
+  if not v_unmetered then
+    select * into v_credit from {{schema}}.credits where job_id = v_job for update;
+    if not found or v_credit.status <> 'reserved'
+       or v_credit.subject_id <> v_subject or v_credit.tenant_id <> p->>'tenant_id' or v_credit.app_id <> p->>'app_id' then
+      return jsonb_build_object('ok', false, 'code', 'PAYMENT_REQUIRED');
+    end if;
   end if;
 
   insert into {{schema}}.proposals(
@@ -522,14 +527,17 @@ begin
     p->>'request_id', p->>'request_hash', (p->>'expires_at')::timestamptz
   ) returning id into v_id;
 
-  update {{schema}}.credits set status = 'consumed', consumed_at = now(), proposal_id = v_id where id = v_credit.id;
-  insert into {{schema}}.credit_ledger(credit_id, tenant_id, app_id, subject_id, kind, job_id)
-  values (v_credit.id, v_credit.tenant_id, v_credit.app_id, v_credit.subject_id, 'consume', v_job);
+  if not v_unmetered then
+    update {{schema}}.credits set status = 'consumed', consumed_at = now(), proposal_id = v_id where id = v_credit.id;
+    insert into {{schema}}.credit_ledger(credit_id, tenant_id, app_id, subject_id, kind, job_id)
+    values (v_credit.id, v_credit.tenant_id, v_credit.app_id, v_credit.subject_id, 'consume', v_job);
+  end if;
 
   insert into {{schema}}.audit_events(tenant_id, app_id, subject_id, surface_id, kind, ref, detail)
   values (p->>'tenant_id', p->>'app_id', v_subject, p->>'surface_id', 'proposal_created', v_id::text,
           jsonb_build_object('jobId', v_job, 'clientId', p->>'client_id', 'candidateId', p->>'candidate_id'));
-  return jsonb_build_object('ok', true, 'replayed', false, 'proposalId', v_id, 'jobId', v_job, 'creditId', v_credit.id);
+  return jsonb_build_object('ok', true, 'replayed', false, 'proposalId', v_id, 'jobId', v_job,
+    'creditId', case when v_unmetered then null else v_credit.id end);
 end;
 $$;
 
