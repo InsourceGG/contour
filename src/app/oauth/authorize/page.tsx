@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ContourError, type Scope } from "@/sdk/types";
 import { APP_ID, resolveHostUser, type HostUser } from "@/server/context";
@@ -53,9 +54,9 @@ function ErrorView({ title, message }: { title: string; message: string }) {
         {message}
       </p>
       <p className="mt-6">
-        <a className="underline underline-offset-4" href="/">
+        <Link className="underline underline-offset-4" href="/">
           Return to Contour
-        </a>
+        </Link>
       </p>
     </Shell>
   );

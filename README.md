@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Contour
 
-## Getting Started
+**Controlled UI customization for companies, driven by users and their personal agents.**
 
-First, run the development server:
+A company registers parts of its UI (components, approved variants, tokens, templates, permission-checked readers). A user, or the user's own AI agent connected over authenticated MCP, asks for a view that fits their task and expertise. Contour generates valid candidates from company code, and a bounded JEV judgment picks one. The user previews it and accepts it in the host app. The company keeps control of design, usability, data, and permissions, and gets an operator console to monitor, analyze, and switch agent access off.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+> Personalization changes presentation only. Authentication, authorization, business logic, data fetching, required actions, and security controls stay company-owned. The model selects among code-generated candidates. It can't introduce JavaScript, JSX, CSS, queries, credentials, or new business actions.
+
+## What's in this repo
+
+| Layer | Where | Owns |
+|---|---|---|
+| Shared SDK contract | `src/sdk/` | Manifest and config types, closed schemas, registration validation, deterministic relational validation, candidate generation, diffs, hashing, the broker, and the React renderer (`src/sdk/react/`) |
+| Company integration (reference "ops-demo") | `src/host/` | Manifest (6 components, 3 templates × 3 breakpoints), candidate policy, React component implementations, server readers |
+| Host server broker | `src/server/` | Verified identity (`context.ts`), Supabase store with explicit owner filters (`store.ts`), JEV adapter (`jev.ts`), CSRF, Stripe |
+| MCP endpoint + OAuth 2.1 AS | `src/app/api/mcp`, `src/server/mcp`, `src/server/oauth`, `src/app/oauth/authorize`, `/.well-known/*` | Discoverable tools over the same broker, audience-bound scoped tokens, no commit privilege |
+| Preference store | `supabase/migrations/` | RLS on every table, transactional RPCs: proposal + credit consumption, approval + compare-and-swap commit, undo/reset, credit grant |
+| Host app | `src/app/` | Dashboard, authenticated preview/approval, settings (pins, history, decision record, connected agents), billing, operator console |
+
+Required stack: **Supabase** (database, host auth, preferences, billing ledger), **Vercel** (frontend, broker, MCP endpoint, Stripe webhook, cron), and **Stripe** (test-mode Checkout for adaptation-job credits). Model selection uses **TypeSafe Jev** through the Vercel AI Gateway (`/v1/evaluate`).
+
+## The loop
+
+```
+Personal agent (Claude Code) ──OAuth 2.1 + PKCE──▶ /api/mcp ──▶ broker ──▶ readers / proposal service
+   describe_surface · read_component_data · propose_view · get_view        (no commit tool)
+
+propose_view: closed-schema input → verified identity + membership → reserve 1 credit →
+  3 candidates from company policy (task × explanation level × explicit density, pins reapplied) →
+  full validation → JEV Choice {guided|balanced|dense|KEEP|ASK} → confidence floor →
+  READY proposal persisted + credit consumed in one transaction → preview URL
+
+Host browser ──session──▶ /preview/:id ──Accept (CSRF, same origin)──▶ contour_apply_proposal
+  (recheck owner, state, expiry, hash, manifest/policy/role, base revision → CAS → history → audit)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+KEEP and ASK never create an approval. Timeouts, provider errors, malformed output, and low confidence all keep the current view and release the credit.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Run locally
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+pnpm install
+cp .env.example .env.local      # fill in Supabase, Stripe test, and AI Gateway keys
+supabase link --project-ref <ref>
+for f in supabase/migrations/*.sql; do supabase db query --linked -f "$f"; done
+pnpm seed                       # demo tenants, identities, synthetic data
+pnpm dev
+```
 
-## Learn More
+Demo identities (synthetic, password `contour-demo-2026`): `alex@contour.demo` and `sam@contour.demo` (Acme members), `morgan@contour.demo` (Acme company operator), and `taylor@contour.demo` (Globex, used for cross-tenant tests).
 
-To learn more about Next.js, take a look at the following resources:
+Connect Claude Code as the personal agent:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+claude mcp add --transport http contour https://contour-sdk.vercel.app/api/mcp
+# then in Claude Code: /mcp → contour → Authenticate (signs you in to the host app and asks for consent)
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+See `docs/AGENT_GUIDE.md` for tools, scopes, preview semantics, and error codes, and `docs/SETUP_CHECKLIST.md` for company integration.
 
-## Deploy on Vercel
+## Tests
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+pnpm exec vitest run tests/unit          # contract, validation, candidates, JEV adapter
+pnpm exec vitest run tests/integration   # real Supabase: broker loop, isolation, RLS, approval, races, recovery, injection, billing ledger, live JEV
+pnpm exec vitest run tests/oauth-mcp.test.ts   # OAuth + MCP against a running server (CONTOUR_TEST_URL)
+pnpm exec playwright test                # browser: preview/accept, state preservation, widths, keyboard
+pnpm tsx --conditions react-server scripts/eval-jev.ts 3 [--holdout]   # labeled JEV evaluation
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Acceptance evidence is recorded in `docs/EVIDENCE.md`.
