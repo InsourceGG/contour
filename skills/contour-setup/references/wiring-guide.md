@@ -22,7 +22,7 @@ function required(name: string): string {
 export const contour = defineContourServer({
   get appUrl() { return new URL(required("APP_URL")).origin; },
   appId: "northwind", resourceName: "Northwind Support",
-  surfaces: ["desk"], get db() { return getAppDb(); }, schema: "northwind",
+  surfaces: ["desk"], get db() { return getAppDb(); }, schema: "northwind_contour",
   get csrfSecret() { return required("CONTOUR_CSRF_SECRET"); },
   identity, agentAccessEnabled,
   get trustedClients() {
@@ -127,7 +127,25 @@ export default config;
 
 Add `src/app/oauth/authorize/page.tsx` using the host layout and `contour.oauth.validateAuthorize(raw)` for the validated consent details. Redirect signed-out visitors through `identity.loginUrl`. Use `contour.oauth.csrfTokenFor(user)` and SDK decision POST. Inspect `AuthorizeValidation` in the installed SDK for its exact fields; do not fabricate a React consent export. Show only agent scopes (`view:read`, `data:read`, `view:propose`) and preserve all PKCE/resource/state checks.
 
-Before running `contour-migrate --apply` or any host SQL against a non-local database, checkpoint 3 must show and approve the exact SQL and target schema. Inspect the installed migration SQL without applying it first. General approval of roles or database access is insufficient. After approval, run `pnpm exec contour-migrate --schema northwind --apply` with the existing authorized database configuration. Use the SDK CLI's installed help for connection options. Keep schema isolation, RLS, and least-privilege grants. Apply approved host role-version and switch changes separately through repo migrations. Do not seed real records or drop tables.
+Contour tables for a host live in a dedicated `<app>_contour` schema. Northwind uses `northwind_contour`: it already exists, is exposed to the Data API, and grants only service_role. Never install into `public`, `cloud`, or the host's business schema (`northwind`).
+
+Before running `contour-migrate --apply` or any host SQL against a non-local database, checkpoint 3 must show and approve the exact SQL and target schema. Inspect the migration SQL without applying it first (`--schema northwind_contour` without `--apply` prints it). General approval of roles or database access is insufficient. The SDK has no package bin; run the CLI by path. In this monorepo the Supabase CLI link lives in `apps/ops-demo`, so from `apps/northwind` after approval:
+
+```sh
+node node_modules/@contour/sdk/bin/contour-migrate.mjs --schema northwind_contour --apply --workdir ../ops-demo
+```
+
+Keep schema isolation, RLS, and least-privilege grants. Do not seed real records or drop host tables.
+
+## Host SQL and rollback
+
+Every host database change goes in `supabase/contour-host.sql`, with an exact rollback in `supabase/contour-host.down.sql`. Both files are shown in full at checkpoint 3. Typical Northwind content: the `northwind.users.role_version` column, its bump trigger and function, and the approved `northwind_contour.tenant_app_settings` row (`tenant_id 'northwind'`, `app_id 'northwind'`, `agent_access_enabled true`). Both files are idempotent (`if not exists`, `create or replace`, `on conflict`; `drop ... if exists` in the down file). The down file reverses exactly what the up file does, in reverse order, and touches nothing else: no business rows, no other columns. After approval, apply the up file from `apps/northwind`:
+
+```sh
+supabase db query --linked -f supabase/contour-host.sql --workdir ../ops-demo
+```
+
+The setup report's rollback section lists, in order: `supabase db query --linked -f supabase/contour-host.down.sql --workdir ../ops-demo`, `node node_modules/@contour/sdk/bin/contour-migrate.mjs --schema northwind_contour --drop --apply --workdir ../ops-demo`, then removing `src/contour/`, the Contour routes and the route mount, `contour.config.json`, the Next config additions, the SDK dependency, and both `supabase/contour-host*.sql` files.
 
 ## Adaptive region and preview
 

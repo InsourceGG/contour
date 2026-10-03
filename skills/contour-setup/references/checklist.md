@@ -10,7 +10,7 @@ Use actual observed results. Missing SDK functionality is a failure or unavailab
 - [ ] MCP readers reconstruct a verified live Session from context rather than requiring a browser cookie or accepting team/user inputs.
 - [ ] HostUser/session IDs are verified and stable; Membership uses current tenant/app, role/version, status, and dataAccess. Role/team changes and deleted/suspended membership block on the next call.
 - [ ] Kill switch defaults match the decision: the default proposal is agents enabled, kill switch available and off. Turning it on disables agent access. Admin toggle and grant revocation enforce identity, origin, and CSRF.
-- [ ] SDK tables use only the approved schema with RLS and least-privilege grants. No secret is in source, browser bundles, reports, or transcripts.
+- [ ] SDK tables use only the approved dedicated `<app>_contour` schema with RLS and least-privilege grants. Every host database change is in `supabase/contour-host.sql` with an exact rollback in `supabase/contour-host.down.sql`, both approved at checkpoint 3. No secret is in source, browser bundles, reports, or transcripts.
 - [ ] Catch-all dispatch and rewrites preserve resource metadata, authorization endpoints, MCP, and host routes. OAuth consent is company-hosted and accepts only verified identities.
 - [ ] Registration module exports manifest, policy, readers, componentIds, and imports without request-only calls or client components. contour.config.json selects it.
 - [ ] `node <skill-dir>/scripts/verify.mjs <appDir>` passes typecheck and `runContractKit({ manifest, policy, readers, componentIds })`. Exit 2 means contract kit unavailable and blocks the claim.

@@ -5,6 +5,10 @@
   "scripts": {
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "pnpm -r --if-present lint",
-    "test": "pnpm -r --if-present test"
+    "test": "pnpm -r --if-present test",
+    "demo:northwind:fresh": "bash scripts/demo/northwind.sh fresh",
+    "demo:northwind:reset": "bash scripts/demo/northwind.sh reset",
+    "demo:northwind:recorded": "bash scripts/demo/northwind.sh recorded",
+    "demo:northwind:status": "bash scripts/demo/northwind.sh status"
   }
 }

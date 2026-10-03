@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderSchema } from "../bin/render.mjs";
+import { renderDrop, renderSchema, templateObjects } from "../bin/render.mjs";
 
 describe("contour schema template", () => {
   it("renders a schema-scoped install", () => {
@@ -98,6 +98,57 @@ describe("contour schema template", () => {
   it("rejects unsafe or reserved schema names", () => {
     for (const bad of ["public", "auth", "storage", "Northwind", "north-wind", "x; drop table y", "", "pg_temp"]) {
       expect(() => renderSchema(bad)).toThrow();
+    }
+  });
+});
+
+describe("contour schema drop (contour-migrate --drop)", () => {
+  // Derive the object list from the rendered install so the drop can never drift from it.
+  const install = renderSchema("northwind_contour");
+  const installedTables = [...install.matchAll(/create table if not exists northwind_contour\.(\w+)/g)].map((m) => m[1]);
+  const installedFunctions = [...install.matchAll(/create or replace function northwind_contour\.(\w+)\(/g)].map((m) => m[1]);
+
+  it("parses the same object list the install creates", () => {
+    expect(installedTables.length).toBeGreaterThan(15);
+    expect(installedFunctions.length).toBeGreaterThan(5);
+    const { tables, functions } = templateObjects();
+    expect([...tables].sort()).toEqual([...new Set(installedTables)].sort());
+    expect([...functions].sort()).toEqual([...new Set(installedFunctions)].sort());
+  });
+
+  it("drops every table (cascade) and function the install creates, idempotently", () => {
+    const sql = renderDrop("northwind_contour");
+    for (const t of installedTables) expect(sql).toContain(`drop table if exists northwind_contour.${t} cascade;`);
+    for (const f of installedFunctions) expect(sql).toContain(`drop function if exists northwind_contour.${f} cascade;`);
+    // Every drop statement is guarded.
+    const drops = sql.split("\n").filter((l) => /^\s*drop /.test(l));
+    expect(drops.length).toBe(installedTables.length + installedFunctions.length);
+    for (const l of drops) expect(l).toMatch(/^drop (table|function) if exists /);
+    expect(sql).toMatch(/^begin;$/m);
+    expect(sql).toMatch(/^commit;$/m);
+    expect(sql).not.toMatch(/\{\{|\}\}/);
+  });
+
+  it("keeps the schema and only empties dedicated *_contour schemas wholesale", () => {
+    const dedicated = renderDrop("northwind_contour");
+    expect(dedicated).not.toMatch(/drop schema/i);
+    expect(dedicated).toContain("n.nspname = 'northwind_contour'");
+    const shared = renderDrop("cloud");
+    expect(shared).not.toMatch(/drop schema/i);
+    expect(shared).not.toContain("pg_class");
+    expect(shared).toContain("drop table if exists cloud.proposals cascade;");
+  });
+
+  it("never names objects outside the target schema", () => {
+    const sql = renderDrop("northwind_contour");
+    for (const l of sql.split("\n").filter((x) => /^drop /.test(x))) expect(l).toMatch(/ northwind_contour\.\w+ cascade;$/);
+    expect(sql).not.toMatch(/\bpublic\./);
+  });
+
+  it("refuses public, reserved, and unsafe schema names", () => {
+    expect(() => renderDrop("public")).toThrow(/reserved schema "public"/);
+    for (const bad of ["auth", "storage", "extensions", "pg_catalog", "supabase_functions", "Northwind", "x; drop table y", ""]) {
+      expect(() => renderDrop(bad)).toThrow();
     }
   });
 });

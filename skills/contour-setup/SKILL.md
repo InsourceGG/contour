@@ -77,13 +77,14 @@ Print `⏸ CHECKPOINT 3: agent access`.
 | Allowed roles | Discovered roles with current data access; list exact role names |
 | Kill switch | Agents ENABLED; admin kill switch available and off. Turning it on DISABLES agents |
 | Revocation | Current membership/version plus grant revocation, checked on next call |
-| Host schema changes | Target schema and exact SQL for every proposed change, including the host users `role_version` column/trigger and `tenant_app_settings` table; explicitly say none if no changes |
+| Contour schema | Dedicated `<app>_contour` schema (Northwind: `northwind_contour`), installed with `contour-migrate --schema <app>_contour --apply`; never `public` or the host's own schema |
+| Host schema changes | Exact SQL of `supabase/contour-host.sql` (for example the users `role_version` column/trigger and the approved `tenant_app_settings` row) and its exact rollback `supabase/contour-host.down.sql`; explicitly say none if no changes |
 
-Populate the host schema row with the actual SQL, not just object names or a migration filename. Show long SQL in a fenced block attached to the row. Include the SDK migration's exact SQL and target schema for any non-local apply. Get separate explicit approval of the SQL if the roles answer does not cover it.
+Populate both schema rows with the actual SQL, not just object names or filenames. Show long SQL in fenced blocks attached to the rows, the down file included. Include the SDK migration's exact SQL and target schema for any non-local apply. Get separate explicit approval of the SQL if the roles answer does not cover it.
 
 Ask: **"Allow these roles to use agents? Agent access starts enabled; the kill switch in admin turns it off. Reply yes or specify roles."**
 
-Only after the answer, create `src/contour/identity.ts`, `src/contour/policy.ts`, and `src/contour/server.ts`. Export `identity`, `policy` (`CandidatePolicy`), and `contour` (`defineContourServer`). Implement an admin-only persisted kill switch. Northwind role names are `agent`, `lead`, `admin`. On means disabled, never enabled. Add any needed identity/version and switch SQL to `supabase/contour-host.sql`; preserve existing auth and team rules.
+Only after the answer, create `src/contour/identity.ts`, `src/contour/policy.ts`, and `src/contour/server.ts`. Export `identity`, `policy` (`CandidatePolicy`), and `contour` (`defineContourServer`). Implement an admin-only persisted kill switch; `agentAccessEnabled` reads `<app>_contour.tenant_app_settings` (Northwind: `northwind_contour.tenant_app_settings`). Northwind role names are `agent`, `lead`, `admin`. On means disabled, never enabled. Write every host database change (identity/version column or trigger, switch row) to `supabase/contour-host.sql` with an exact, idempotent rollback in `supabase/contour-host.down.sql`; preserve existing auth and team rules.
 
 ## Phase 5: Wire the app
 
@@ -105,7 +106,7 @@ Edit the chosen screen to wrap only its approved region with `AdaptiveSurface`. 
 
 Running `contour-migrate --apply` or any host SQL against a non-local database is a gated action: checkpoint 3 must approve that exact SQL and target schema before execution. Inspect the installed migration SQL without applying it and show it in checkpoint 3; if it changes or was not named, return to that checkpoint and wait. A roles answer or general database authorization does not approve SQL.
 
-After approval, run `pnpm exec contour-migrate --schema <approved-schema> --apply`, keeping RLS and least-privilege grants. For Northwind use `northwind`, never `public` or `cloud`. Apply approved host SQL through the repo's existing migration flow. No new external service is needed when the repo already has its database. Do not invent a provider or replace existing infrastructure.
+After approval, run `contour-migrate --schema <app>_contour --apply` (Northwind: `--schema northwind_contour`; see the wiring guide for the exact command), keeping RLS and least-privilege grants. Never install into `public`, `cloud`, or the host's business schema. The server config uses `schema: "<app>_contour"`. Apply the approved `supabase/contour-host.sql` through the repo's existing migration flow; never apply host SQL that has no matching down file. No new external service is needed when the repo already has its database. Do not invent a provider or replace existing infrastructure.
 
 ## Phase 6: Register in Cloud
 
@@ -140,7 +141,7 @@ Print `⏸ CHECKPOINT 5: deploy`.
 | Target | Existing deployment project and approved environment |
 | Changes | Reviewed integration diff and migration summary |
 | Checks | Actual results, unresolved failures, and manual checks |
-| Rollback | Turn the kill switch on to disable agents, revoke grants, restore original region |
+| Rollback | Turn the kill switch on to disable agents, revoke grants, restore original region; full removal per the report's rollback commands |
 
 Ask: **"Deploy this integration to the listed target? Reply yes or no."**
 
@@ -188,6 +189,11 @@ Cloud origin/project ID, verification status, deploy target/result or skip reaso
 Do not include credentials, tokens, cookie values, or the nonce.
 
 ## Rollback and remaining work
-Disable agent access, revoke affected grants, revert integration commit/wrapper,
-keep host data and auth intact. List exact SDK gaps and manual checks.
+Disable agent access and revoke affected grants first. Full removal, in order:
+1. Apply `supabase/contour-host.down.sql` (exact command for this repo).
+2. `contour-migrate --schema <app>_contour --drop --apply`.
+3. Remove `src/contour/`, the Contour routes and route mount, `contour.config.json`,
+   the `next.config.*` additions, the SDK dependency, and both `supabase/contour-host*.sql`;
+   restore the original region. Host data and auth stay intact.
+List exact SDK gaps and manual checks.
 ```
