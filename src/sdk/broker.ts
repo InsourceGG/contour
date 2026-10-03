@@ -84,6 +84,8 @@ export type DecisionEvent = {
   currency: string | null;
   rationale: string | null;
   proposalId: string | null;
+  /** Set by the store when reading; ignored on write. */
+  createdAt?: string;
 };
 
 export interface ContourStore {
@@ -767,9 +769,18 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
     let stateReason: string | null = null;
     if (p.status === "APPLIED") state = "applied";
     else if (p.status === "REJECTED") state = "rejected";
-    else if (p.status === "EXPIRED") (state = "expired"), (stateReason = "This proposal expired before it was accepted.");
-    else if (p.status === "STALE") (state = "stale"), (stateReason = "Your view changed after this proposal was made.");
-    else if (p.status === "INVALID") (state = "invalid"), (stateReason = "This proposal no longer passes company policy.");
+    else if (p.status === "EXPIRED") {
+      state = "expired";
+      stateReason = "This proposal expired before it was accepted.";
+    }
+    else if (p.status === "STALE") {
+      state = "stale";
+      stateReason = "Your view changed after this proposal was made.";
+    }
+    else if (p.status === "INVALID") {
+      state = "invalid";
+      stateReason = "This proposal no longer passes company policy.";
+    }
     else {
       const membership = await requireMembership(ctx);
       const valid = validateViewConfig(manifest, p.config, { pins: prefs.pins });

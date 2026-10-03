@@ -7,7 +7,7 @@ import { redeemAuthorizationCode } from "./codes";
 import { hashSecret, randomToken, safeEqual, TOKEN_PREFIX, verifyPkceS256 } from "./crypto";
 import { OAuthError } from "./errors";
 import { agentScopesOnly, getGrantById, revokeGrantForSecurityEvent, revokeTokensForGrants, type GrantRow } from "./grants";
-import { isOurResource, parseRequestedScopes } from "./authorize";
+import { isOurResource } from "./authorize";
 
 export type TokenRow = {
   token_hash: string;
@@ -173,13 +173,15 @@ export async function refreshAccessToken(params: URLSearchParams, clientId: stri
   await assertGrantUsable(grant, row.grant_revision);
 
   let scopes = agentScopesOnly(row.scopes).filter((s) => grant.scopes.includes(s));
-  if (scopeParam !== undefined) {
-    const parsed = parseRequestedScopes(scopeParam);
-    const requested = scopeParam.split(" ").filter(Boolean);
-    if (parsed.error || requested.some((s) => !scopes.includes(s as Scope))) {
+  if (scopeParam !== undefined && scopeParam.trim() !== "") {
+    // Narrowing only. Non-agent values (e.g. offline_access, view:commit) are
+    // ignored, never granted; asking for an agent scope outside the original
+    // grant is an error.
+    const requested = AGENT_SCOPES.filter((s) => scopeParam.split(" ").includes(s));
+    if (requested.length === 0 || requested.some((s) => !scopes.includes(s))) {
       throw new OAuthError("invalid_scope", "Requested scope exceeds the original grant");
     }
-    scopes = AGENT_SCOPES.filter((s) => requested.includes(s));
+    scopes = requested;
   }
 
   const { response, refreshHash, rows } = await issueTokenPair(grant, scopes);

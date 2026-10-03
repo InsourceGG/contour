@@ -3,12 +3,16 @@
 const LOCALE = "en-US";
 
 export function formatMoney(value: number, currency = "USD", compact = false): string {
+  // Pin both fraction bounds: Node and browser ICU resolve currency defaults differently.
+  const abs = Math.abs(value);
+  const digits = compact ? ((abs >= 1000 && abs < 10_000) || abs >= 1_000_000 ? 1 : 0) : value % 1 === 0 ? 0 : 2;
   try {
     return new Intl.NumberFormat(LOCALE, {
       style: "currency",
       currency,
       notation: compact ? "compact" : "standard",
-      maximumFractionDigits: compact ? 1 : value % 1 === 0 ? 0 : 2,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
     }).format(value);
   } catch {
     return `${value.toLocaleString(LOCALE)} ${currency}`;
@@ -20,7 +24,7 @@ export function formatNumber(value: number, digits = 0): string {
 }
 
 export function formatCompact(value: number): string {
-  return new Intl.NumberFormat(LOCALE, { notation: "compact", maximumFractionDigits: 1 }).format(value);
+  return new Intl.NumberFormat(LOCALE, { notation: "compact", minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(value);
 }
 
 export function formatPct(value: number | null | undefined, digits = 1, signed = false): string {

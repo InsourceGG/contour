@@ -10,7 +10,10 @@ type Metric = MetricsSummary["metrics"][number];
 export function formatMetric(m: Pick<Metric, "value" | "unit">): string {
   const u = m.unit;
   if (u === "%" || u === "pct" || u === "percent") return formatPct(m.value, 1);
+  // "currency" means the account currency; the demo tenants bill in USD.
+  if (u === "currency") return formatMoney(m.value, "USD", m.value >= 100_000);
   if (/^[A-Z]{3}$/.test(u)) return formatMoney(m.value, u, m.value >= 100_000);
+  if (u === "score") return formatNumber(m.value, m.value % 1 === 0 ? 0 : 1);
   if (u === "count" || u === "" || u === "#") return m.value >= 100_000 ? formatCompact(m.value) : formatNumber(m.value);
   return `${formatNumber(m.value, m.value % 1 === 0 ? 0 : 1)} ${u}`;
 }

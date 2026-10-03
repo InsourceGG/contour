@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { browserSupabase } from "@/components/supabase-browser";
 import { useClearComponentState } from "@/sdk/react/component-state";
 import { IconChevron } from "@/components/icons";
@@ -16,6 +17,7 @@ export function AccountMenu({ displayName, email, tenant, role }: Props) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const clearState = useClearComponentState();
+  const router = useRouter();
 
   useEffect(() => {
     if (!open) return;
@@ -46,7 +48,8 @@ export function AccountMenu({ displayName, email, tenant, role }: Props) {
       return;
     }
     clearState();
-    window.location.assign("/login");
+    router.replace("/login");
+    router.refresh();
   }
 
   const initials = displayName

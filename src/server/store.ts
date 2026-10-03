@@ -379,6 +379,7 @@ export const supabaseStore: ContourStore = {
         currency: d.currency,
         rationale: d.rationale,
         proposalId: d.proposal_id,
+        createdAt: d.created_at,
       }),
     );
   },

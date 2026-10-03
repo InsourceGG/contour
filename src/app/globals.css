@@ -537,7 +537,7 @@
   }
   .cs-slot[data-changed="true"] > .hc {
     box-shadow:
-      0 0 0 2px var(--color-accent),
+      0 0 0 2px var(--color-ink),
       0 1px 2px rgb(19 33 43 / 0.06);
   }
 

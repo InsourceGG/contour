@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { BreakpointId, ChangeItem, SurfaceManifest, ViewConfig, ViewSnapshot } from "../types";
 import { AdaptiveSurface } from "./AdaptiveSurface";
+import { breakpointForWidth } from "./layout";
 import type { SurfaceComponentMap } from "./types";
 
 type Props = {
@@ -40,7 +41,15 @@ const KIND_ORDER: ChangeItem["kind"][] = ["template", "density", "visibility", "
  */
 export function ViewPreview({ manifest, current, proposed, changes, data, proposedData, componentMap, componentLabels, pinnedIds }: Props) {
   const [tab, setTab] = useState<"current" | "proposed">("proposed");
-  const [bp, setBp] = useState<BreakpointId>("wide");
+  // Default to the viewer's own device class; the user can switch.
+  const template = manifest.templates.find((t) => t.id === proposed.templateId) ?? manifest.templates[0];
+  const deviceBp = useSyncExternalStore<BreakpointId>(
+    subscribeResize,
+    () => breakpointForWidth(template, window.innerWidth).id,
+    () => "wide",
+  );
+  const [chosenBp, setBp] = useState<BreakpointId | null>(null);
+  const bp = chosenBp ?? deviceBp;
   const baseId = useId();
   const changedIds = new Set(changes.map((c) => c.componentId).filter((x): x is string => !!x));
   const tabs = [
@@ -58,7 +67,7 @@ export function ViewPreview({ manifest, current, proposed, changes, data, propos
 
   return (
     <div className="space-y-6">
-      <ChangeList changes={changes} labels={componentLabels} />
+      <ChangeList changes={changes} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="vp-tabs">
@@ -112,7 +121,7 @@ export function ViewPreview({ manifest, current, proposed, changes, data, propos
               </h2>
               {t.id === "proposed" && changedIds.size > 0 && (
                 <span className="meta">
-                  <span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm align-middle ring-2 ring-accent" aria-hidden="true" />
+                  <span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm align-middle ring-2 ring-ink" aria-hidden="true" />
                   Outlined panels change
                 </span>
               )}
@@ -136,6 +145,11 @@ export function ViewPreview({ manifest, current, proposed, changes, data, propos
       </div>
     </div>
   );
+}
+
+function subscribeResize(cb: () => void) {
+  window.addEventListener("resize", cb);
+  return () => window.removeEventListener("resize", cb);
 }
 
 /** Renders children at a virtual width and scales them to fit the pane (CSS zoom keeps layout height honest). */
@@ -162,7 +176,7 @@ function ScaledFrame({ virtualWidth, children }: { virtualWidth: number; childre
   );
 }
 
-function ChangeList({ changes, labels }: { changes: ChangeItem[]; labels?: Readonly<Record<string, string>> }) {
+function ChangeList({ changes }: { changes: ChangeItem[] }) {
   if (changes.length === 0) {
     return (
       <section aria-labelledby="vp-changes" className="panel p-4">
@@ -186,14 +200,7 @@ function ChangeList({ changes, labels }: { changes: ChangeItem[]; labels?: Reado
             <ul className="mt-1.5 space-y-2">
               {g.items.map((c, i) => (
                 <li key={`${c.kind}-${c.componentId ?? "view"}-${i}`} className="text-sm">
-                  <p>{c.summary}</p>
-                  <p className="meta">
-                    {c.componentId ? `${labels?.[c.componentId] ?? c.componentId}: ` : ""}
-                    <span className="line-through decoration-ink-3/60">{c.from}</span>
-                    <span aria-hidden="true"> ⟶ </span>
-                    <span className="sr-only"> changes to </span>
-                    <span className="font-semibold text-ink">{c.to}</span>
-                  </p>
+                  {c.summary}
                 </li>
               ))}
             </ul>

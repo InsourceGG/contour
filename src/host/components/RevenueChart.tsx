@@ -42,8 +42,10 @@ export function RevenueChart({ points, currency, height, summary, showAverage, m
   const lo = Math.min(...values);
   const hi = Math.max(...values);
   const ticks = niceTicks(lo - (hi - lo) * 0.1, hi + (hi - lo) * 0.05, compactAxis ? 2 : 4);
-  const y0 = ticks[0];
-  const y1 = ticks[ticks.length - 1];
+  // Sparklines use the data's own range; full charts use clean tick bounds.
+  const range = hi - lo || Math.abs(hi) || 1;
+  const y0 = compactAxis ? lo - range * 0.08 : ticks[0];
+  const y1 = compactAxis ? hi + range * 0.08 : ticks[ticks.length - 1];
   const x = (i: number) => pad.left + (i / (points.length - 1)) * innerW;
   const y = (v: number) => pad.top + innerH - ((v - y0) / (y1 - y0 || 1)) * innerH;
 
