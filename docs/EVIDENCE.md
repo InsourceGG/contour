@@ -16,8 +16,8 @@ Recorded 3 October 2026 against the live deployment, with real Supabase, Stripe 
 | Suite | Runs against | Result |
 |---|---|---|
 | `tests/unit` (contract, validation, candidates, JEV adapter) | local | 32/32 pass |
-| `tests/integration/broker.test.ts` (real broker + store + RPCs + RLS, plus one live JEV call) | live Supabase | 26/26 pass |
-| `tests/oauth-mcp.test.ts` (OAuth AS + MCP endpoint) | **production URL** | 31/31 pass |
+| `tests/integration/broker.test.ts` (real broker + store + RPCs + RLS, plus one live JEV call) | live Supabase | 27/27 pass |
+| `tests/oauth-mcp.test.ts` (OAuth AS + MCP endpoint) | **production URL** | 32/32 pass |
 | `tests/stripe-webhook.test.ts` (signed webhook abuse cases) | **production URL** | 4/4 pass |
 | `tests/e2e/contour.spec.ts` (browser) | **production URL** | 6/6 pass |
 | `scripts/agent-run.ts` (real Claude Code agent loop) | **production URL** | PASSED, see `evidence/agent-run-summary.json` |
@@ -52,3 +52,18 @@ Testing with the real client caught one incompatibility. Claude Code 2.1.288 neg
 ## Connection mode
 
 Hosted remote MCP with OAuth 2.1 (protected-resource metadata, AS metadata, DCR and CIMD, PKCE S256, RFC 8707 resource binding, refresh rotation, revocation) is implemented and tested against production. To connect interactively: `claude mcp add --transport http contour https://contour-sdk.vercel.app/api/mcp`, then authenticate via `/mcp`. Other clients are untested.
+
+## Independent security review
+
+A separate review pass looked for exploitable issues in the broker, the store, the host routes, billing, OAuth/MCP, and the live database's grants and policies. It found nothing critical or high. Confirmed findings and their fixes:
+
+| Finding | Fix |
+|---|---|
+| Medium: one tenant's operator could flip the agent-access switch for every tenant | Per-tenant `tenant_app_settings`, AND-ed with the company master switch. The console route only writes the operator's own tenant. Tested at the broker level and over HTTP on production. |
+| The authorize endpoint auto-redirected errors to unverified client redirect URIs (open redirector, RFC 9700 §4.11.2) | Errors render an explanation with an explicit link, and nothing redirects automatically. Tested signed in and signed out. |
+| Unauthenticated CIMD fetch: no rate limit, DNS-rebinding gap, detailed error side channel | Rate limits per host and global, the connection is pinned to the pre-validated address (TLS still checks the host name), and errors are generic. |
+| `authenticated` could UPDATE `user_preferences` directly, bypassing broker validation | Grant revoked. Stored pins are re-parsed with the closed schema on read. |
+| CSRF token not bound to the session | The token is HMAC over subject + Supabase `session_id`. A token from another session is rejected (tested). |
+| A concurrent identical replay could leave a credit reserved for 10 minutes | Released immediately on replay. |
+| Undo ignored manual pins | Undo validates against current pins. |
+| Malformed Basic auth returned 500 | Returns 401 `invalid_client`. |

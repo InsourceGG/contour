@@ -11,8 +11,8 @@
   ],
   "proposal": {
     "outcome": "READY",
-    "proposalId": "08f6713c-5588-4692-aadb-45be659d0139",
-    "previewUrl": "https://contour-sdk.vercel.app/preview/08f6713c-5588-4692-aadb-45be659d0139",
+    "proposalId": "3df8eb2c-88e2-4688-a6f0-4126683a88ed",
+    "previewUrl": "https://contour-sdk.vercel.app/preview/3df8eb2c-88e2-4688-a6f0-4126683a88ed",
     "baseRevision": 0,
     "alertsSeen": 2,
     "tasksSeen": 2
@@ -28,5 +28,5 @@
     "templateId": "focus-triage",
     "densityToken": "density.compact"
   },
-  "at": "2026-10-03T21:38:27.261Z"
+  "at": "2026-10-03T21:57:44.928Z"
 }
