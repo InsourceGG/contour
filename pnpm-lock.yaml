@@ -6,7 +6,9 @@ settings:
 
 importers:
 
-  .:
+  .: {}
+
+  apps/ops-demo:
     dependencies:
       '@supabase/ssr':
         specifier: ^0.12.7

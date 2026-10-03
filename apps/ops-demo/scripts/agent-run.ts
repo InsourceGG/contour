@@ -88,7 +88,7 @@ async function authorize(page: Page): Promise<string> {
     if (r.url().startsWith("http://127.0.0.1:53682/")) callback = r.url();
   });
   await page.goto(url.toString());
-  await page.screenshot({ path: "docs/evidence/oauth-consent.png", fullPage: true });
+  await page.screenshot({ path: "../../docs/evidence/oauth-consent.png", fullPage: true });
   await page.getByRole("button", { name: /^(Allow|Approve|Authorize)/i }).first().click().catch(() => {});
   for (let i = 0; i < 30 && !callback; i++) await page.waitForTimeout(250);
   const cb = new URL(callback);
@@ -137,7 +137,7 @@ function claude(token: string, prompt: string, file: string): { text: string; to
 }
 
 async function main() {
-  mkdirSync("docs/evidence", { recursive: true });
+  mkdirSync("../../docs/evidence", { recursive: true });
   const browser = await chromium.launch();
   const page = await browser.newPage();
   await signIn(page);
@@ -154,7 +154,7 @@ async function main() {
   const p1 = claude(
     token,
     "You are my personal agent for the company dashboard exposed by the `contour` MCP server. 1) Call describe_surface for surfaceId 'overview'. 2) Read the active alerts and my task list with read_component_data. 3) I'm an EXPERT and I'm about to TRIAGE WORK; I like compact density. Call propose_view with surfaceId 'overview', the current baseRevision from describe_surface, task {id:'triage_work',source:'explicit'}, expertise {level:'expert',source:'explicit'}, preferences {density:'compact'}, and a fresh unique requestId. 4) Reply with ONLY a JSON object: {\"outcome\":..., \"proposalId\":..., \"previewUrl\":..., \"baseRevision\":..., \"alertsSeen\":<number>, \"tasksSeen\":<number>}.",
-    "docs/evidence/claude-code-phase1.jsonl",
+    "../../docs/evidence/claude-code-phase1.jsonl",
   );
   log("tools called:", p1.tools.map((t) => t.name).join(" → "));
   const json = JSON.parse(p1.text.slice(p1.text.indexOf("{"), p1.text.lastIndexOf("}") + 1));
@@ -163,16 +163,16 @@ async function main() {
 
   log("host approval in the authenticated browser session");
   await page.goto(new URL(json.previewUrl).pathname.replace(/^/, BASE));
-  await page.screenshot({ path: "docs/evidence/preview-from-agent.png", fullPage: true });
+  await page.screenshot({ path: "../../docs/evidence/preview-from-agent.png", fullPage: true });
   await page.getByRole("button", { name: "Accept proposed view" }).click();
   await page.waitForURL((u) => u.pathname === "/", { timeout: 30000 });
-  await page.screenshot({ path: "docs/evidence/dashboard-after-accept.png", fullPage: true });
+  await page.screenshot({ path: "../../docs/evidence/dashboard-after-accept.png", fullPage: true });
 
   log("phase 2: Claude Code verifies the saved view");
   const p2 = claude(
     token,
     `Using the contour MCP server, call get_view with surfaceId 'overview' and proposalId '${json.proposalId}'. Reply with ONLY a JSON object: {"revision":<snapshot.revision>, "source":<snapshot.source>, "proposalStatus":<proposal.status>, "templateId":<snapshot.config.templateId>, "densityToken":<snapshot.config.densityToken>}.`,
-    "docs/evidence/claude-code-phase2.jsonl",
+    "../../docs/evidence/claude-code-phase2.jsonl",
   );
   log("tools called:", p2.tools.map((t) => t.name).join(" → "));
   const v = JSON.parse(p2.text.slice(p2.text.indexOf("{"), p2.text.lastIndexOf("}") + 1));
@@ -180,7 +180,7 @@ async function main() {
   if (v.proposalStatus !== "APPLIED" || v.revision !== json.baseRevision + 1) throw new Error("saved view verification failed");
 
   writeFileSync(
-    "docs/evidence/agent-run-summary.json",
+    "../../docs/evidence/agent-run-summary.json",
     JSON.stringify(
       {
         client: `Claude Code ${execFileSync("claude", ["--version"], { encoding: "utf8" }).trim()} (headless, -p)`,

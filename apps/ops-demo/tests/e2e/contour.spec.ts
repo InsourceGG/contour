@@ -147,6 +147,6 @@ for (const width of [390, 768, 1440]) {
     await expect(ack).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
-    await page.screenshot({ path: `docs/evidence/dashboard-${width}.png`, fullPage: true });
+    await page.screenshot({ path: `../../docs/evidence/dashboard-${width}.png`, fullPage: true });
   });
 }

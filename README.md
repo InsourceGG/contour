@@ -10,12 +10,12 @@ A company registers parts of its UI (components, approved variants, tokens, temp
 
 | Layer | Where | Owns |
 |---|---|---|
-| Shared SDK contract | `src/sdk/` | Manifest and config types, closed schemas, registration validation, deterministic relational validation, candidate generation, diffs, hashing, the broker, and the React renderer (`src/sdk/react/`) |
-| Company integration (reference "ops-demo") | `src/host/` | Manifest (6 components, 3 templates × 3 breakpoints), candidate policy, React component implementations, server readers |
-| Host server broker | `src/server/` | Verified identity (`context.ts`), Supabase store with explicit owner filters (`store.ts`), JEV adapter (`jev.ts`), CSRF, Stripe |
-| MCP endpoint + OAuth 2.1 AS | `src/app/api/mcp`, `src/server/mcp`, `src/server/oauth`, `src/app/oauth/authorize`, `/.well-known/*` | Discoverable tools over the same broker, audience-bound scoped tokens, no commit privilege |
-| Preference store | `supabase/migrations/` | RLS on every table, transactional RPCs: proposal + credit consumption, approval + compare-and-swap commit, undo/reset, credit grant |
-| Host app | `src/app/` | Dashboard, authenticated preview/approval, settings (pins, history, decision record, connected agents), billing, operator console |
+| Shared SDK contract | `apps/ops-demo/src/sdk/` | Manifest and config types, closed schemas, registration validation, deterministic relational validation, candidate generation, diffs, hashing, the broker, and the React renderer (`apps/ops-demo/src/sdk/react/`) |
+| Company integration (reference "ops-demo") | `apps/ops-demo/src/host/` | Manifest (6 components, 3 templates × 3 breakpoints), candidate policy, React component implementations, server readers |
+| Host server broker | `apps/ops-demo/src/server/` | Verified identity (`context.ts`), Supabase store with explicit owner filters (`store.ts`), JEV adapter (`jev.ts`), CSRF, Stripe |
+| MCP endpoint + OAuth 2.1 AS | `apps/ops-demo/src/app/api/mcp`, `apps/ops-demo/src/server/{mcp,oauth}`, `apps/ops-demo/src/app/oauth/authorize`, `/.well-known/*` | Discoverable tools over the same broker, audience-bound scoped tokens, no commit privilege |
+| Preference store | `apps/ops-demo/supabase/migrations/` | RLS on every table, transactional RPCs: proposal + credit consumption, approval + compare-and-swap commit, undo/reset, credit grant |
+| Host app | `apps/ops-demo/src/app/` | Dashboard, authenticated preview/approval, settings (pins, history, decision record, connected agents), billing, operator console |
 
 Required stack: **Supabase** (database, host auth, preferences, billing ledger), **Vercel** (frontend, broker, MCP endpoint, Stripe webhook, cron), and **Stripe** (test-mode Checkout for adaptation-job credits). Model selection uses **TypeSafe Jev** through the Vercel AI Gateway (`/v1/evaluate`).
 
@@ -39,12 +39,14 @@ KEEP and ASK never create an approval. Timeouts, provider errors, malformed outp
 ## Run locally
 
 ```bash
-pnpm install
-cp .env.example .env.local      # fill in Supabase, Stripe test, and AI Gateway keys
+pnpm install                    # pnpm workspace: apps/* and packages/*
+cp apps/ops-demo/.env.example apps/ops-demo/.env.local   # fill in Supabase, Stripe test, and AI Gateway keys
+cd apps/ops-demo
 supabase link --project-ref <ref>
 for f in supabase/migrations/*.sql; do supabase db query --linked -f "$f"; done
-pnpm seed                       # demo tenants, identities, synthetic data
-pnpm dev
+cd ../..
+pnpm -F ops-demo seed           # demo tenants, identities, synthetic data
+pnpm -F ops-demo dev
 ```
 
 Demo identities (synthetic, password `contour-demo-2026`): `alex@contour.demo` and `sam@contour.demo` (Acme members), `morgan@contour.demo` (Acme company operator), and `taylor@contour.demo` (Globex, used for cross-tenant tests).
@@ -61,11 +63,11 @@ See `docs/AGENT_GUIDE.md` for tools, scopes, preview semantics, and error codes,
 ## Tests
 
 ```bash
-pnpm exec vitest run tests/unit          # contract, validation, candidates, JEV adapter
-pnpm exec vitest run tests/integration   # real Supabase: broker loop, isolation, RLS, approval, races, recovery, injection, billing ledger, live JEV
-pnpm exec vitest run tests/oauth-mcp.test.ts   # OAuth + MCP against a running server (CONTOUR_TEST_URL)
-pnpm exec playwright test                # browser: preview/accept, state preservation, widths, keyboard
-pnpm tsx --conditions react-server scripts/eval-jev.ts 3 [--holdout]   # labeled JEV evaluation
+pnpm -F ops-demo exec vitest run tests/unit          # contract, validation, candidates, JEV adapter
+pnpm -F ops-demo exec vitest run tests/integration   # real Supabase: broker loop, isolation, RLS, approval, races, recovery, injection, billing ledger, live JEV
+pnpm -F ops-demo exec vitest run tests/oauth-mcp.test.ts   # OAuth + MCP against a running server (CONTOUR_TEST_URL)
+pnpm -F ops-demo exec playwright test                # browser: preview/accept, state preservation, widths, keyboard
+pnpm -F ops-demo exec tsx --conditions react-server scripts/eval-jev.ts 3 [--holdout]   # labeled JEV evaluation
 ```
 
 Acceptance evidence is recorded in `docs/EVIDENCE.md`.
