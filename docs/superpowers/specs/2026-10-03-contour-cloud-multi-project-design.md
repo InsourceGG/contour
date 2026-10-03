@@ -28,7 +28,7 @@ All invariants of the baseline spec still hold. Personalization changes presenta
 
 | Package | Responsibility |
 |---|---|
-| `packages/contour-sdk` | Contract types, closed schemas, registration and config validation, candidate generation, diff, hashing, the broker, the JEV selector, and the React renderer (`AdaptiveSurface`, `ViewPreview`, `ContourPreviewPage`, `ConnectAgentPanel`). Plus the **project API** (`createContourHandlers`): OAuth authorization server, consent, project agent API, host routes, `.well-known` files, and an optional direct project MCP. Plus the store adapters (`postgresStore({ schema })`), the `contour migrate` CLI, and the contract test kit. Framework adapter: Next.js App Router. |
+| `packages/contour-sdk` | Contract types, closed schemas, registration and config validation, candidate generation, diff, hashing, the broker, the JEV selector, and the React renderer (`AdaptiveSurface`, `ViewPreview`, `ContourPreviewPage`, `ConnectAgentPanel`). Plus the **project API** (`createContourHandlers`): OAuth authorization server, consent, project agent API, host routes, `.well-known` files, and an optional direct project MCP. Plus the store adapters (`supabaseStore({ schema })`), the `contour migrate` CLI, and the contract test kit. Framework adapter: Next.js App Router. |
 | `apps/cloud` | Contour Cloud: consumer accounts, the site-owner console and project registry, domain verification, link flows, the encrypted grant vault, the consumer MCP (`/api/mcp`) with its own OAuth authorization server for MCP clients, and the Cloud CIMD at `/oauth/client.json`. |
 | `apps/ops-demo` | The existing Acme operations dashboard, refactored onto the SDK package. Project #1, registered in Cloud. Keeps Stripe billing through the SDK billing adapter. |
 | `apps/northwind` | The Northwind Support baseline (no Contour), then the skill-integrated version. Project #2. |
@@ -106,7 +106,7 @@ No commit, reset, or undo tools exist. All tools have closed input schemas.
 ### Forwarding rules
 - Resolve the link by (caller, projectId). If it's missing, return `NOT_FOUND`.
 - Get the access token from the encrypted cache, or refresh it (rotation, with a single-flight lock per link to avoid refresh races).
-- Call `POST {agentApiResource}/tools/{name}` with JSON. Only that registered HTTPS origin is called, with address pinning, no redirects, an 8 s timeout, and a 256 KB response cap.
+- Call the project's MCP endpoint (`agentApiResource` = `{appUrl}/api/mcp`) with JSON-RPC `tools/call`. Only that registered HTTPS origin is called, with address pinning, no redirects, an 8 s timeout, and a 256 KB response cap.
 - Map project errors to stable codes, and add Cloud codes: `LINK_REQUIRED`, `PROJECT_ACCESS_REVOKED`, `PROJECT_UNAVAILABLE`, `AGENT_ACCESS_DISABLED`.
 - Rate-limit per caller and per project.
 - Never log tokens, and never put them in model-visible output.
@@ -119,7 +119,7 @@ export const { GET, POST } = createContourHandlers({
   projectId, appUrl,
   manifests, policies, readers, componentIds,
   resolveIdentity,                 // (request) => VerifiedHostUser | null, from the company's own session
-  store: postgresStore({ schema }),
+  store: supabaseStore({ schema }),
   selector: jevSelector(),
   trustedClients: ["https://contour-sdk.vercel.app/oauth/client.json"],
   allowDynamicClients: true,       // direct project MCP for single-project users
@@ -137,7 +137,7 @@ export const { GET, POST } = createContourHandlers({
 
 **React:** `<AdaptiveSurface>`, `<ViewPreview>`, `<ContourPreviewPage>` (built from the host's components and tokens through a `theme` prop), and `<ConnectAgentPanel cloudUrl projectId>`.
 
-**`postgresStore({ schema })`:** the existing transactional SQL (create proposal + consume credit, apply with CAS, commit snapshot, reserve/release/grant credit, OAuth tables, rate limits), parameterized by schema. `contour migrate --schema <s>` creates the tables, the RLS, and the function grants.
+**`supabaseStore({ schema })`:** the existing transactional SQL (create proposal + consume credit, apply with CAS, commit snapshot, reserve/release/grant credit, OAuth tables, rate limits), parameterized by schema. `contour migrate --schema <s>` creates the tables, the RLS, and the function grants.
 
 The Acme migration keeps its current `public` tables through a compatibility mapping, so no data moves.
 
@@ -227,7 +227,7 @@ Guardrails:
 
 ## 11. Testing
 - **Unit:** the SDK (the migrated 32 tests) plus Cloud link state, encryption, forwarding, and error mapping.
-- **Integration:** the broker suite against `postgresStore` for both the `public` (Acme) and `northwind` schemas, plus Cloud link and forward against a running project.
+- **Integration:** the broker suite against `supabaseStore` for both the `public` (Acme) and `northwind` schemas, plus Cloud link and forward against a running project.
 - **OAuth/MCP:** the project AS suite (the migrated 32 tests, run against both projects), and a Cloud MCP suite (list, connect, describe/read/propose across two projects; cross-account and cross-project spoofing; revocation propagation; refresh single-flight).
 - **E2E on production:**
   1. consumer signup;
