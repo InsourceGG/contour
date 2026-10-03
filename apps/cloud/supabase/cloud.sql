@@ -41,6 +41,18 @@ create table if not exists cloud.links (
   primary key (contour_user, project_id)
 );
 
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'cloud.links'::regclass and conname = 'links_scopes_check'
+  ) then
+    alter table cloud.links add constraint links_scopes_check
+      check (scopes <@ array['view:read','data:read','view:propose']::text[]);
+  end if;
+end;
+$$;
+
 create table if not exists cloud.link_states (
   state_hash text primary key,
   contour_user uuid not null,
@@ -64,7 +76,7 @@ alter table cloud.projects enable row level security;
 alter table cloud.links enable row level security;
 alter table cloud.link_states enable row level security;
 alter table cloud.audit_events enable row level security;
-revoke all on cloud.projects, cloud.links, cloud.link_states, cloud.audit_events from public, anon, authenticated;
+revoke all on all tables in schema cloud from public, anon, authenticated;
 grant usage on schema cloud to service_role;
 grant all on cloud.projects, cloud.links, cloud.link_states, cloud.audit_events to service_role;
 grant usage, select on sequence cloud.audit_events_id_seq to service_role;
@@ -85,7 +97,7 @@ as $$
     and states.expires_at > now()
   returning states.project_id, states.verifier_ct, states.key_id;
 $$;
-revoke all on function cloud.consume_link_state(text, uuid) from public, anon, authenticated;
+revoke all on all functions in schema cloud from public, anon, authenticated;
 grant execute on function cloud.consume_link_state(text, uuid) to service_role;
 
 notify pgrst, 'reload schema';

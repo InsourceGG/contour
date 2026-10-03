@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { CloudDb } from './db.js';
 import { forwardTool, type ProjectRecord } from './forward.js';
-import { getActiveLink, listLinks } from './links.js';
+import { listLinks } from './links.js';
 import type { FetchJson } from './pinned-fetch.js';
 
 export type ToolDef = {
@@ -74,7 +74,7 @@ export function cloudTools(deps: {
     return {
       name, title, description,
       inputSchema: z.toJSONSchema(schema),
-      annotations: { title, readOnlyHint, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      annotations: { title, readOnlyHint, destructiveHint: false, idempotentHint: name !== 'propose_view', openWorldHint: true },
       async handler(ctx, args) {
         const parsed = schema.safeParse(args);
         if (!parsed.success) throw new ToolError('INVALID_INPUT', 'Invalid tool input');
@@ -98,9 +98,12 @@ export function cloudTools(deps: {
 
   async function forward(ctx: { contourUser: string }, args: Record<string, unknown>, name: string) {
     const { projectId: id, ...projectArgs } = args;
-    const active = await getActiveLink(db, ctx.contourUser, id as string);
-    if (!active) throw new ToolError('NOT_FOUND', 'Project not found');
+    const { data: link, error } = await db.from('links').select('status')
+      .eq('contour_user', ctx.contourUser).eq('project_id', id).maybeSingle();
+    if (error) throw new ToolError('PROJECT_UNAVAILABLE', 'Project unavailable');
+    if (!link) throw new ToolError('NOT_FOUND', 'Project not found');
     const project = await verifiedProject(id as string);
+    if (link.status !== 'active') throw new ToolError('LINK_REQUIRED', 'Call connect_project to reconnect this project');
     const { result, isError } = await forwardTool(deps, {
       contourUser: ctx.contourUser, project, tool: name, args: projectArgs,
     });

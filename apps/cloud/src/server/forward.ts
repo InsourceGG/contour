@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { CloudDb } from './db';
-import { getActiveLink, type LinkRecord } from './links';
+import { getActiveLink, markLink, type LinkRecord } from './links';
 import { encrypt, decrypt } from './vault';
 import type { FetchJson } from './pinned-fetch';
 
@@ -147,7 +147,13 @@ export async function forwardTool(
       throw revoked();
     }
     const rpc = response.json;
-    if (response.status === 403 && object(rpc) && object(rpc.error) && object(rpc.error.data) && rpc.error.data.code === 'AGENT_ACCESS_DISABLED') throw new ForwardError('AGENT_ACCESS_DISABLED', 'Agent access is disabled for this project');
+    if (response.status === 403) {
+      if (object(rpc) && object(rpc.error) && object(rpc.error.data) && rpc.error.data.code === 'AGENT_ACCESS_DISABLED') {
+        throw new ForwardError('AGENT_ACCESS_DISABLED', 'Agent access is disabled for this project');
+      }
+      await markLink(deps.db, p.contourUser, p.project.id, 'needs_reconnect');
+      throw revoked();
+    }
     if (response.status < 200 || response.status >= 300 || !object(rpc) || !object(rpc.result)) throw unavailable();
     const result = rpc.result;
     let data = result.structuredContent;

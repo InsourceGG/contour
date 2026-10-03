@@ -17,6 +17,18 @@ describe('forwardTool',()=>{
  it('refreshes and retries once after a 401',async()=>{const db=fixture();let calls=0;const fetchJson=vi.fn<FetchJson>(async(url)=>url===project.tokenEndpoint?rotated:(++calls===1?response(401,{}):success));expect(await forwardTool({db,fetchJson,clientId:'client'},params)).toMatchObject({isError:false});expect(calls).toBe(2);expect(fetchJson).toHaveBeenCalledTimes(3);});
  it('marks invalid_grant as needs_reconnect without leaking tokens',async()=>{const db=fixture(true);const fetchJson=vi.fn<FetchJson>(async()=>response(400,{error:'invalid_grant',error_description:'secret-refresh secret-access'}));await expect(forwardTool({db,fetchJson,clientId:'client'},params)).rejects.toMatchObject({code:'PROJECT_ACCESS_REVOKED',message:expect.not.stringContaining('secret-')});expect(db.tables.get('links')![0].status).toBe('needs_reconnect');});
  it('maps kill switch while keeping the link active',async()=>{const db=fixture();const fetchJson=vi.fn<FetchJson>(async()=>response(403,{error:{data:{code:'AGENT_ACCESS_DISABLED'},message:'secret-access'}}));await expect(forwardTool({db,fetchJson,clientId:'client'},params)).rejects.toMatchObject({code:'AGENT_ACCESS_DISABLED',message:expect.not.stringContaining('secret-access')});expect(db.tables.get('links')![0].status).toBe('active');});
+ it.each([
+   { name: 'insufficient_scope', json: {}, headers: new Headers({ 'WWW-Authenticate': 'Bearer error="insufficient_scope"' }) },
+   { name: 'role change', json: { error: { data: { code: 'FORBIDDEN' }, message: 'secret-access' } }, headers: new Headers() },
+   { name: 'unstructured rejection', json: null, headers: new Headers() },
+ ])('marks $name 403 as needs_reconnect without leaking tokens', async ({ json, headers }) => {
+   const db = fixture();
+   const fetchJson = vi.fn<FetchJson>(async () => ({ status: 403, json, headers }));
+   await expect(forwardTool({ db, fetchJson, clientId: 'client' }, params))
+     .rejects.toMatchObject({ code: 'PROJECT_ACCESS_REVOKED', message: expect.not.stringContaining('secret-') });
+   expect(db.tables.get('links')![0].status).toBe('needs_reconnect');
+   expect(fetchJson).toHaveBeenCalledTimes(1);
+ });
  it.each([new Error('timeout secret-access'),new Error('socket secret-refresh')])('sanitizes network errors',async(error)=>{const db=fixture();const fetchJson=vi.fn<FetchJson>(async()=>{throw error;});await expect(forwardTool({db,fetchJson,clientId:'client'},params)).rejects.toMatchObject({code:'PROJECT_UNAVAILABLE',message:expect.not.stringContaining('secret-')});});
  it('maps 5xx to unavailable',async()=>{await expect(forwardTool({db:fixture(),fetchJson:async()=>response(503,{}),clientId:'client'},params)).rejects.toMatchObject({code:'PROJECT_UNAVAILABLE'});});
  it('single-flights two concurrent expired access calls',async()=>{const db=fixture(true);let refreshes=0;const fetchJson:FetchJson=async(url)=>{if(url===project.tokenEndpoint){refreshes++;await new Promise(resolve=>setTimeout(resolve,10));return rotated;}return success;};const out=await Promise.all([forwardTool({db,fetchJson,clientId:'client'},params),forwardTool({db,fetchJson,clientId:'client'},params)]);expect(out).toHaveLength(2);expect(refreshes).toBe(1);});

@@ -89,4 +89,23 @@ describe.skipIf(process.env.CLOUD_DB_TESTS !== '1')('links against real cloud sc
     expect(decrypt(row!.refresh_ct, row!.key_id)).toBe('test-refresh-after');
     expect(decrypt(row!.access_ct!, row!.key_id)).toBe('test-access-after');
   });
+
+  it('enforces the scope cap on direct database inserts and updates', async () => {
+    const removed = await db.from('links').delete().eq('contour_user', contourUser).eq('project_id', projectId);
+    expect(removed.error).toBeNull();
+    const token = encrypt('test-refresh');
+    const rejected = await db.from('links').insert({
+      contour_user: contourUser, project_id: projectId, status: 'active',
+      scopes: ['view:read', 'view:write'], refresh_ct: token.ct, key_id: token.keyId,
+    });
+    expect(rejected.error).toMatchObject({ code: '23514' });
+    expect(await getActiveLink(db, contourUser, projectId)).toBeNull();
+    await upsertLink(db, { contourUser, projectId, refreshToken: 'test-refresh',
+      scopes: ['view:read', 'data:read', 'view:propose'] });
+    const updated = await db.from('links').update({ scopes: ['admin'] })
+      .eq('contour_user', contourUser).eq('project_id', projectId);
+    expect(updated.error).toMatchObject({ code: '23514' });
+    expect((await getActiveLink(db, contourUser, projectId))?.scopes)
+      .toEqual(['view:read', 'data:read', 'view:propose']);
+  });
 });

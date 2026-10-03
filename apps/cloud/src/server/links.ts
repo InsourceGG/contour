@@ -65,6 +65,9 @@ export async function consumeLinkState(db: CloudDb, p: { state: string; contourU
 }
 
 export async function upsertLink(db: CloudDb, p: { contourUser: string; projectId: string; refreshToken: string; accessToken?: string; accessExpiresAt?: string; scopes: string[]; subjectHint?: string | null }): Promise<void> {
+  if (p.scopes.some(scope => !['view:read', 'data:read', 'view:propose'].includes(scope))) {
+    throw new LinkError('INVALID_SCOPE', 'Unsupported project grant scope');
+  }
   const refresh = encrypt(p.refreshToken);
   const access = p.accessToken === undefined ? null : encrypt(p.accessToken);
   // A single row key ID protects both tokens, including when configuration rotates mid-call.

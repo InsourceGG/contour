@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CloudDb } from '../../src/server/db';
 import { createFakeDb } from '../helpers/fake-db';
 import { cloudTools, ToolError } from '../../src/server/tools';
 
@@ -18,6 +17,15 @@ const missingId = '3d237cf1-1b12-4c23-865a-1c230adf1562';
 const pendingId = '4d237cf1-1b12-4c23-865a-1c230adf1562';
 const reconnectId = '5d237cf1-1b12-4c23-865a-1c230adf1562';
 const disabledId = '6d237cf1-1b12-4c23-865a-1c230adf1562';
+const revokedId = '7d237cf1-1b12-4c23-865a-1c230adf1562';
+const forwardingCases = [
+  { name: 'describe_surface', args: { surfaceId: 'support-desk' } },
+  { name: 'read_component_data', args: { surfaceId: 'support-desk', readerId: 'tickets.list' } },
+  { name: 'propose_view', args: { surfaceId: 'support-desk', baseRevision: 0,
+    task: { id: 'triage_queue', source: 'explicit' }, expertise: { level: 'new', source: 'explicit' },
+    requestId: 'request-001' } },
+  { name: 'get_view', args: { surfaceId: 'support-desk' } },
+];
 
 function project(id: string, status = 'verified') {
   return { id, status, name: `Project ${id[0]}`, company: 'Northwind', description: 'Support desk',
@@ -27,11 +35,11 @@ function project(id: string, status = 'verified') {
 }
 
 // Query double models the read/filter/join behavior used by tools and links.
-function fixtureDb(): CloudDb {
+function fixtureDb() {
   const projects = [project(linkedId), project(availableId), project(pendingId, 'pending'),
-    project(reconnectId), project(disabledId, 'disabled')];
-  const links = [linkedId, reconnectId, disabledId].map((project_id) => ({
-    contour_user: user, project_id, status: project_id === reconnectId ? 'needs_reconnect' : 'active',
+    project(reconnectId), project(disabledId, 'disabled'), project(revokedId)];
+  const links = [linkedId, reconnectId, disabledId, revokedId, pendingId, missingId].map((project_id) => ({
+    contour_user: user, project_id, status: project_id === reconnectId ? 'needs_reconnect' : project_id === revokedId ? 'revoked' : 'active',
     scopes: ['view:read'], refresh_ct: 'opaque', access_ct: null, access_expires_at: null, key_id: 'k1',
     subject_hint: null, created_at: '2026-10-03T00:00:00Z', updated_at: '2026-10-03T00:00:00Z',
     projects: projects.find((p) => p.id === project_id),
@@ -65,9 +73,31 @@ describe('consumer tools', () => {
     expect(await find('list_projects').handler({ contourUser: missingId }, {})).toEqual([]);
   });
 
-  it.each([availableId, missingId, reconnectId, disabledId])('hides unavailable project %s with the same NOT_FOUND', async (projectId) => {
-    await expect(find('describe_surface').handler(ctx, { projectId, surfaceId: 'support-desk' }))
-      .rejects.toMatchObject({ code: 'NOT_FOUND', message: 'Project not found' });
+  it.each(forwardingCases)('hides unavailable projects with the same NOT_FOUND in $name', async ({ name, args }) => {
+    for (const projectId of [availableId, missingId, pendingId, disabledId]) {
+      for (const status of ['active', 'needs_reconnect', 'revoked']) {
+        const db = fixtureDb();
+        const link = db.tables.get('links')!.find((row) => row.project_id === projectId);
+        if (link) link.status = status;
+        const tool = cloudTools({ db, fetchJson: async () => { throw new Error('Network forbidden'); },
+          clientId: 'client', appUrl: 'https://cloud.example/' }).find((tool) => tool.name === name)!;
+        await expect(tool.handler(ctx, { ...args, projectId }))
+          .rejects.toMatchObject({ code: 'NOT_FOUND', message: 'Project not found' });
+      }
+    }
+  });
+
+  it.each(forwardingCases)('requires connect_project for caller-owned inactive links in $name', async ({ name, args }) => {
+    for (const projectId of [reconnectId, revokedId]) {
+      await expect(find(name).handler(ctx, { ...args, projectId }))
+        .rejects.toMatchObject({ code: 'LINK_REQUIRED', message: expect.stringContaining('connect_project') });
+      await expect(find(name).handler({ contourUser: missingId }, { ...args, projectId }))
+        .rejects.toMatchObject({ code: 'NOT_FOUND', message: 'Project not found' });
+    }
+  });
+
+  it('marks proposals as spending a credit rather than idempotent', () => {
+    expect(find('propose_view').annotations).toMatchObject({ readOnlyHint: false, idempotentHint: false });
   });
 
   it('hides a linked project from another consumer', async () => {

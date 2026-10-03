@@ -52,6 +52,15 @@ describe('link state', () => {
   });
 });
 describe('links', () => {
+  it.each(['view:write', 'admin', ''])('rejects unsupported scope %s before replacing a grant', async (scope) => {
+    const db = createFakeDb();
+    const grant = { contourUser, projectId, refreshToken: 'refresh', scopes: ['view:read', 'data:read', 'view:propose'] };
+    await upsertLink(db, grant);
+    const previous = structuredClone(db.tables.get('links'));
+    await expect(upsertLink(db, { ...grant, scopes: ['view:read', scope] }))
+      .rejects.toMatchObject({ code: 'INVALID_SCOPE' });
+    expect(db.tables.get('links')).toEqual(previous);
+  });
   it('encrypts tokens, replaces a grant and clears an omitted access cache', async () => {
     const db = createFakeDb();
     await upsertLink(db, { contourUser, projectId, refreshToken: 'refresh-a', accessToken: 'access-a', accessExpiresAt: '2026-10-03T13:00:00Z', scopes: ['view:read'], subjectHint: 'Jordan' });
