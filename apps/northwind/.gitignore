@@ -7,3 +7,6 @@ coverage/
 .smoke/
 
 supabase/.temp/
+.screenshots/
+test-results/
+playwright-report/

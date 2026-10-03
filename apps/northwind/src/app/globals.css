@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "../components/desk/desk.css";
+@import "../contour/contour.css";
+@source "../../node_modules/@contour/sdk/src/react";
 
 @theme inline { --font-sans: var(--font-geist); }
 :root {
