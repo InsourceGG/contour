@@ -1,3 +1,4 @@
+import "server-only";
 import { randomUUID } from 'node:crypto';
 import type { CloudDb } from './db';
 import { getActiveLink, markLink, type LinkRecord } from './links';
@@ -12,6 +13,8 @@ export type ProjectRecord = {
   asIssuer: string;
   tokenEndpoint: string;
   revocationEndpoint: string | null;
+  registrationEndpoint?: string | null;
+  dcrClientId?: string | null;
 };
 export class ForwardError extends Error {
   constructor(public code: string, message: string) { super(message); this.name = 'ForwardError'; }

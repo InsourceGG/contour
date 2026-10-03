@@ -1,3 +1,4 @@
+import "server-only";
 import { createClient } from '@supabase/supabase-js';
 
 export type CloudDb = { from(table: string): any; rpc(fn: string, args: object): any };

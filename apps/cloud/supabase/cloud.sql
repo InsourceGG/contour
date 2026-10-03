@@ -25,6 +25,8 @@ create table if not exists cloud.projects (
 alter table cloud.projects add column if not exists token_endpoint text;
 alter table cloud.projects add column if not exists authorization_endpoint text;
 alter table cloud.projects add column if not exists revocation_endpoint text;
+alter table cloud.projects add column if not exists registration_endpoint text;
+alter table cloud.projects add column if not exists dcr_client_id text;
 
 create table if not exists cloud.links (
   contour_user uuid not null references auth.users(id) on delete cascade,
@@ -62,6 +64,9 @@ create table if not exists cloud.link_states (
   expires_at timestamptz not null,
   used_at timestamptz
 );
+-- Browser linking is bound to the exact Supabase Auth session, including
+-- when the same consumer signs out and signs back in during the redirect.
+alter table cloud.link_states add column if not exists session_id text;
 
 create table if not exists cloud.audit_events (
   id bigint generated always as identity primary key,
@@ -71,6 +76,12 @@ create table if not exists cloud.audit_events (
   detail jsonb not null default '{}',
   created_at timestamptz not null default now()
 );
+-- Consumer activity and SDK authorization-server audit records share this table.
+alter table cloud.audit_events add column if not exists tenant_id text;
+alter table cloud.audit_events add column if not exists app_id text;
+alter table cloud.audit_events add column if not exists subject_id uuid;
+alter table cloud.audit_events add column if not exists surface_id text;
+alter table cloud.audit_events add column if not exists ref text;
 
 alter table cloud.projects enable row level security;
 alter table cloud.links enable row level security;
@@ -93,12 +104,30 @@ as $$
   set used_at = now()
   where states.state_hash = p_state_hash
     and states.contour_user = p_contour_user
+    and states.session_id is null
+    and states.used_at is null
+    and states.expires_at > now()
+  returning states.project_id, states.verifier_ct, states.key_id;
+$$;
+create or replace function cloud.consume_session_link_state(p_state_hash text, p_contour_user uuid, p_session_id text)
+returns table (project_id uuid, verifier_ct text, key_id text)
+language sql
+security invoker
+set search_path = ''
+as $$
+  update cloud.link_states as states
+  set used_at = now()
+  where states.state_hash = p_state_hash
+    and states.contour_user = p_contour_user
+    and states.session_id = p_session_id
+    and p_session_id <> ''
     and states.used_at is null
     and states.expires_at > now()
   returning states.project_id, states.verifier_ct, states.key_id;
 $$;
 revoke all on all functions in schema cloud from public, anon, authenticated;
 grant execute on function cloud.consume_link_state(text, uuid) to service_role;
+grant execute on function cloud.consume_session_link_state(text, uuid, text) to service_role;
 
 notify pgrst, 'reload schema';
 commit;

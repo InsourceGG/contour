@@ -1,6 +1,7 @@
+import "server-only";
 import { createHash, randomBytes } from 'node:crypto';
-import type { CloudDb } from './db.js';
-import { decrypt, encrypt } from './vault.js';
+import type { CloudDb } from './db';
+import { decrypt, encrypt } from './vault';
 
 export type LinkRecord = {
   contour_user: string;
@@ -38,13 +39,15 @@ async function query<T>(operation: () => PromiseLike<{ data?: T; error?: unknown
   }
 }
 
-export async function createLinkState(db: CloudDb, p: { contourUser: string; projectId: string }): Promise<{ state: string; verifier: string; challenge: string }> {
+export async function createLinkState(db: CloudDb, p: { contourUser: string; projectId: string; sessionId?: string }): Promise<{ state: string; verifier: string; challenge: string }> {
+  if (p.sessionId !== undefined && !p.sessionId) throw new LinkError('INVALID_STATE', 'An active session is required');
   const state = randomBytes(32).toString('base64url');
   const verifier = randomBytes(32).toString('base64url');
   const sealed = encrypt(verifier);
   await query(() => db.from('link_states').insert({
     state_hash: createHash('sha256').update(state).digest('hex'),
     contour_user: p.contourUser,
+    session_id: p.sessionId ?? null,
     project_id: p.projectId,
     verifier_ct: sealed.ct,
     key_id: sealed.keyId,
@@ -53,10 +56,11 @@ export async function createLinkState(db: CloudDb, p: { contourUser: string; pro
   return { state, verifier, challenge: createHash('sha256').update(verifier).digest('base64url') };
 }
 
-export async function consumeLinkState(db: CloudDb, p: { state: string; contourUser: string }): Promise<{ projectId: string; verifier: string }> {
-  const data = await query<{ project_id: string; verifier_ct: string; key_id: string }[]>(() => db.rpc('consume_link_state', {
+export async function consumeLinkState(db: CloudDb, p: { state: string; contourUser: string; sessionId?: string }): Promise<{ projectId: string; verifier: string }> {
+  const data = await query<{ project_id: string; verifier_ct: string; key_id: string }[]>(() => db.rpc(p.sessionId === undefined ? 'consume_link_state' : 'consume_session_link_state', {
     p_state_hash: createHash('sha256').update(p.state).digest('hex'),
     p_contour_user: p.contourUser,
+    ...(p.sessionId === undefined ? {} : { p_session_id: p.sessionId }),
   }), 'Unable to consume link state');
   const row = data?.[0];
   if (!row) throw new LinkError('INVALID_STATE', 'Invalid or expired link state');

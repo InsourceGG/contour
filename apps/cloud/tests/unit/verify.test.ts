@@ -16,7 +16,7 @@ afterEach(() => vi.unstubAllEnvs());
 describe("verifyProject", () => {
   it("verifies identity, resource and discovered issuer metadata", async () => {
     const fetch = fetcher();
-    expect(await verifyProject(project, fetch)).toEqual({ mcpResource: documents[1].resource, asIssuer: documents[2].issuer, tokenEndpoint: documents[2].token_endpoint, authorizationEndpoint: documents[2].authorization_endpoint, revocationEndpoint: documents[2].revocation_endpoint });
+    expect(await verifyProject(project, fetch)).toEqual({ mcpResource: documents[1].resource, asIssuer: documents[2].issuer, tokenEndpoint: documents[2].token_endpoint, authorizationEndpoint: documents[2].authorization_endpoint, revocationEndpoint: documents[2].revocation_endpoint, registrationEndpoint: null });
     expect(fetch.mock.calls.map(([url]) => url)).toEqual(["https://project.example/.well-known/contour-project.json", "https://project.example/.well-known/oauth-protected-resource/api/mcp", "https://auth.example/.well-known/oauth-authorization-server"]);
     for (const [, init] of fetch.mock.calls) expect(init).toMatchObject({ maxBytes: 262144, timeoutMs: 8000 });
   });
@@ -51,6 +51,10 @@ describe("verifyProject", () => {
   });
   it("allows absent revocation endpoint", async () => {
     expect((await verifyProject(project, fetcher([documents[0], documents[1], { ...documents[2], revocation_endpoint: undefined }]))).revocationEndpoint).toBeNull();
+  });
+  it("stores the verified registration endpoint and rejects an unsafe endpoint", async () => {
+    expect((await verifyProject(project, fetcher([documents[0], documents[1], { ...documents[2], registration_endpoint: 'https://auth.example/register' }]))).registrationEndpoint).toBe('https://auth.example/register');
+    await expect(verifyProject(project, fetcher([documents[0], documents[1], { ...documents[2], registration_endpoint: 'http://auth.example/register' }]))).rejects.toMatchObject({ code: 'INVALID_URL' });
   });
   it("allows explicitly enabled http localhost projects", async () => {
     vi.stubEnv("CLOUD_ALLOW_LOCAL_PROJECTS", "1");

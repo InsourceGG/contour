@@ -74,9 +74,11 @@ export function createFakeDb(seed: Record<string, Row[]> = {}): FakeCloudDb {
       return query;
     },
     async rpc(fn, args) {
-      if (fn !== 'consume_link_state') throw new Error('Unexpected RPC');
-      const { p_state_hash, p_contour_user } = args as Record<string, string>;
-      const state = rows('link_states').find(row => row.state_hash === p_state_hash && row.contour_user === p_contour_user && !row.used_at && Date.parse(row.expires_at) > Date.now());
+      if (fn !== 'consume_link_state' && fn !== 'consume_session_link_state') throw new Error('Unexpected RPC');
+      const { p_state_hash, p_contour_user, p_session_id } = args as Record<string, string>;
+      const state = rows('link_states').find(row => row.state_hash === p_state_hash && row.contour_user === p_contour_user &&
+        (fn === 'consume_session_link_state' ? !!p_session_id && row.session_id === p_session_id : row.session_id == null) &&
+        !row.used_at && Date.parse(row.expires_at) > Date.now());
       if (!state) return { data: [], error: null };
       state.used_at = new Date().toISOString();
       return { data: [{ project_id: state.project_id, verifier_ct: state.verifier_ct, key_id: state.key_id }], error: null };

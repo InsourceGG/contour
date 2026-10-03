@@ -1,3 +1,4 @@
+import "server-only";
 import { pinnedFetchJson, type FetchJson } from "./pinned-fetch";
 
 export class VerifyError extends Error {
@@ -21,7 +22,7 @@ function object(value: unknown): Record<string, unknown> {
 export async function verifyProject(
   p: { baseUrl: string; projectId: string; nonce: string },
   fetchJson: FetchJson = pinnedFetchJson,
-): Promise<{ mcpResource: string; asIssuer: string; tokenEndpoint: string; authorizationEndpoint: string; revocationEndpoint: string | null }> {
+): Promise<{ mcpResource: string; asIssuer: string; tokenEndpoint: string; authorizationEndpoint: string; revocationEndpoint: string | null; registrationEndpoint: string | null }> {
   const base = metadataUrl(p.baseUrl);
   if (base.search) throw new VerifyError("INVALID_URL");
   async function fetchDocument(url: string): Promise<Record<string, unknown>> {
@@ -48,11 +49,13 @@ export async function verifyProject(
   metadataUrl(metadata.token_endpoint);
   metadataUrl(metadata.authorization_endpoint);
   if (metadata.revocation_endpoint !== undefined && metadata.revocation_endpoint !== null) metadataUrl(metadata.revocation_endpoint);
+  if (metadata.registration_endpoint !== undefined && metadata.registration_endpoint !== null) metadataUrl(metadata.registration_endpoint);
   return {
     mcpResource: resource.resource as string,
     asIssuer: issuer as string,
     tokenEndpoint: metadata.token_endpoint as string,
     authorizationEndpoint: metadata.authorization_endpoint as string,
     revocationEndpoint: (metadata.revocation_endpoint as string | null | undefined) ?? null,
+    registrationEndpoint: (metadata.registration_endpoint as string | null | undefined) ?? null,
   };
 }

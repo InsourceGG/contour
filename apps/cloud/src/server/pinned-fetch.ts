@@ -1,3 +1,4 @@
+import "server-only";
 import { lookup } from "node:dns/promises";
 import { request as httpsRequest } from "node:https";
 import { request as httpRequest, type ClientRequest } from "node:http";
