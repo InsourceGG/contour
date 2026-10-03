@@ -3,8 +3,8 @@
 import type { SurfaceData } from "@/host/readers/types";
 import { overviewManifest } from "@/host/manifest";
 import { componentLabels, componentMap } from "@/host/components";
-import { ViewPreview } from "@/sdk/react/ViewPreview";
-import type { ChangeItem, ViewConfig, ViewSnapshot } from "@/sdk/types";
+import { ViewPreview } from "@contour/sdk/react";
+import type { ChangeItem, ViewConfig, ViewSnapshot } from "@contour/sdk/core";
 
 type Props = {
   current: ViewSnapshot;

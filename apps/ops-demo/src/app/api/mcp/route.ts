@@ -1,4 +1,6 @@
-import { handleMcpPost, methodNotAllowed } from "@/server/mcp/handler";
+import { methodNotAllowed } from "@contour/sdk/server";
+import { contour } from "@/server/contour";
+import { agentTools, SERVER_INSTRUCTIONS } from "@/server/agent-tools";
 
 /**
  * Contour MCP endpoint (Streamable HTTP, stateless, JSON responses).
@@ -8,8 +10,11 @@ import { handleMcpPost, methodNotAllowed } from "@/server/mcp/handler";
  */
 export const dynamic = "force-dynamic";
 
+let handler: ((request: Request) => Promise<Response>) | null = null;
+
 export async function POST(request: Request) {
-  return handleMcpPost(request);
+  handler ??= contour.mcp({ tools: agentTools(), instructions: SERVER_INSTRUCTIONS });
+  return handler(request);
 }
 
 /** No standalone SSE stream and no sessions in this server. */

@@ -1,13 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { createAdaptiveBroker, type Selector, type SelectorResult } from "@/sdk/broker";
-import { defineAdaptiveApp } from "@/sdk/registry";
-import { AGENT_SCOPES, ALL_SCOPES, type Scope, type VerifiedContext } from "@/sdk/types";
+import { createAdaptiveBroker, type Selector, type SelectorResult, defineAdaptiveApp, AGENT_SCOPES, ALL_SCOPES, type Scope, type VerifiedContext } from "@contour/sdk/core";
 import { overviewManifest } from "@/host/manifest";
 import { overviewPolicy } from "@/host/policy";
 import { readers } from "@/host/readers";
 import { COMPONENT_IDS } from "@/host/component-ids";
-import { supabaseStore } from "@/server/store";
+import { contour } from "@/server/contour";
 
 export const PASSWORD = "contour-demo-2026";
 
@@ -157,7 +155,7 @@ export function brokerWith(selector: Selector) {
     registry,
     policies: { overview: overviewPolicy },
     readers,
-    store: supabaseStore,
+    store: contour.store,
     selector,
     confidenceFloor: 0.7,
     appUrl: "http://localhost:3000",

@@ -2,8 +2,8 @@ import "server-only";
 import { readers } from "@/host/readers";
 import type { SurfaceData } from "@/host/readers/types";
 import { overviewManifest } from "@/host/manifest";
-import type { VerifiedContext, ViewConfig } from "@/sdk/types";
-import { supabaseStore } from "./store";
+import type { VerifiedContext, ViewConfig } from "@contour/sdk/core";
+import { contour } from "./contour";
 
 /**
  * Fetches reader data for the visible components of a validated config in
@@ -12,7 +12,7 @@ import { supabaseStore } from "./store";
  * simply not fetched, and a visible one still requires permission.
  */
 export async function getSurfaceData(ctx: VerifiedContext, config: ViewConfig): Promise<SurfaceData> {
-  const membership = await supabaseStore.getMembership(ctx.subjectId, ctx.tenantId, ctx.appId);
+  const membership = await contour.store.getMembership(ctx.subjectId, ctx.tenantId, ctx.appId);
   if (!membership || membership.status !== "active" || !membership.dataAccess || !ctx.scopes.has("data:read")) return {};
   const out: Record<string, unknown> = {};
   await Promise.all(

@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { browserSupabase } from "@/components/supabase-browser";
-import { useClearComponentState } from "@/sdk/react/component-state";
+import { useClearComponentState } from "@contour/sdk/react";
 import { IconChevron } from "@/components/icons";
 
 type Props = { displayName: string; email: string; tenant: string; role: string };

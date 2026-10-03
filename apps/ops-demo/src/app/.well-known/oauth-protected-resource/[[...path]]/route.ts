@@ -1,5 +1,5 @@
-import { protectedResourceMetadata } from "@/server/oauth/config";
-import { corsPreflight, PUBLIC_CORS_HEADERS } from "@/server/oauth/http";
+import { corsPreflight, PUBLIC_CORS_HEADERS } from "@contour/sdk/server";
+import { contour } from "@/server/contour";
 
 /**
  * RFC 9728 Protected Resource Metadata for the MCP endpoint. Served at the
@@ -12,7 +12,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/.well-known/oauth-p
   if (suffix !== "" && suffix !== "/api/mcp") {
     return Response.json({ error: "not_found" }, { status: 404, headers: PUBLIC_CORS_HEADERS });
   }
-  return Response.json(protectedResourceMetadata(), {
+  return Response.json(contour.oauth.protectedResourceMetadata(), {
     headers: { ...PUBLIC_CORS_HEADERS, "Cache-Control": "public, max-age=300" },
   });
 }

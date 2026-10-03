@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { PreviewState } from "@/sdk/broker";
+import type { PreviewState } from "@contour/sdk/core";
 import { IconAlert, IconCheck, IconInfo } from "@/components/icons";
 
 const COPY: Record<Exclude<PreviewState, "ready">, { title: string; body: string; tone: "info" | "warning" | "success" }> = {

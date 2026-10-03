@@ -10,12 +10,14 @@ A company registers parts of its UI (components, approved variants, tokens, temp
 
 | Layer | Where | Owns |
 |---|---|---|
-| Shared SDK contract | `apps/ops-demo/src/sdk/` | Manifest and config types, closed schemas, registration validation, deterministic relational validation, candidate generation, diffs, hashing, the broker, and the React renderer (`apps/ops-demo/src/sdk/react/`) |
+| SDK core (`@contour/sdk/core`) | `packages/contour-sdk/src/core/` | Manifest and config types, closed schemas, registration validation, deterministic relational validation, candidate generation, diffs, hashing, the broker |
+| SDK renderer (`@contour/sdk/react`) | `packages/contour-sdk/src/react/` | `AdaptiveSurface`, `ViewPreview`, component boundaries and per-component state |
+| SDK server (`@contour/sdk/server`) | `packages/contour-sdk/src/server/` | `defineContourServer(config)`: OAuth 2.1 AS (DCR, CIMD, PKCE, rotation, revocation, consent decision), MCP endpoint and broker tools, schema-parameterized Supabase store, CSRF and host-route helpers, `createContourHandlers`, `pinnedFetchJson` |
+| SDK selector (`@contour/sdk/jev`) | `packages/contour-sdk/src/jev/` | Bounded TypeSafe Jev adapter (env-free) |
 | Company integration (reference "ops-demo") | `apps/ops-demo/src/host/` | Manifest (6 components, 3 templates × 3 breakpoints), candidate policy, React component implementations, server readers |
-| Host server broker | `apps/ops-demo/src/server/` | Verified identity (`context.ts`), Supabase store with explicit owner filters (`store.ts`), JEV adapter (`jev.ts`), CSRF, Stripe |
-| MCP endpoint + OAuth 2.1 AS | `apps/ops-demo/src/app/api/mcp`, `apps/ops-demo/src/server/{mcp,oauth}`, `apps/ops-demo/src/app/oauth/authorize`, `/.well-known/*` | Discoverable tools over the same broker, audience-bound scoped tokens, no commit privilege |
+| Host server wiring | `apps/ops-demo/src/server/` | `contour.ts` (the SDK server config), verified identity (`context.ts`), agent switch, MCP tool copy, JEV env wiring, console, Stripe |
 | Preference store | `apps/ops-demo/supabase/migrations/` | RLS on every table, transactional RPCs: proposal + credit consumption, approval + compare-and-swap commit, undo/reset, credit grant |
-| Host app | `apps/ops-demo/src/app/` | Dashboard, authenticated preview/approval, settings (pins, history, decision record, connected agents), billing, operator console |
+| Host app | `apps/ops-demo/src/app/` | Dashboard, authenticated preview/approval, OAuth consent page, settings (pins, history, decision record, connected agents), billing, operator console; OAuth/MCP route files call into `contour` |
 
 Required stack: **Supabase** (database, host auth, preferences, billing ledger), **Vercel** (frontend, broker, MCP endpoint, Stripe webhook, cron), and **Stripe** (test-mode Checkout for adaptation-job credits). Model selection uses **TypeSafe Jev** through the Vercel AI Gateway (`/v1/evaluate`).
 
@@ -63,7 +65,7 @@ See `docs/AGENT_GUIDE.md` for tools, scopes, preview semantics, and error codes,
 ## Tests
 
 ```bash
-pnpm -F ops-demo exec vitest run tests/unit          # contract, validation, candidates, JEV adapter
+pnpm -F @contour/sdk exec vitest run                 # contract, validation, candidates, JEV adapter, server config
 pnpm -F ops-demo exec vitest run tests/integration   # real Supabase: broker loop, isolation, RLS, approval, races, recovery, injection, billing ledger, live JEV
 pnpm -F ops-demo exec vitest run tests/oauth-mcp.test.ts   # OAuth + MCP against a running server (CONTOUR_TEST_URL)
 pnpm -F ops-demo exec playwright test                # browser: preview/accept, state preservation, widths, keyboard

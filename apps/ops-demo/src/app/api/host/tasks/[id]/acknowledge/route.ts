@@ -1,13 +1,13 @@
 import { z } from "zod";
-import { ContourError } from "@/sdk/types";
-import { hostMutation } from "@/server/host-route";
+import { ContourError } from "@contour/sdk/core";
+import { contour } from "@/server/contour";
 import { adminClient } from "@/server/supabase";
 
 /** Company-owned business action (not part of adaptation). Only the
  *  assignee may acknowledge; identity comes from the verified session. */
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  return hostMutation(request, async (vc) => {
+  return contour.hostMutation(request, async (vc) => {
     const taskId = z.uuid().safeParse(id);
     if (!taskId.success) throw new ContourError("INVALID_INPUT", "Invalid task id");
     const { data, error } = await adminClient()

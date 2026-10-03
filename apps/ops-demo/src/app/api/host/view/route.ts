@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBroker } from "@/server/broker";
 import { resolveHostContext } from "@/server/context";
-import { errorResponse } from "@/server/http";
+import { errorResponse } from "@contour/sdk/server";
 
 export async function GET() {
   try {

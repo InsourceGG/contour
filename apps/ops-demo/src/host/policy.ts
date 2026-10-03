@@ -1,4 +1,4 @@
-import type { CandidatePolicy } from "@/sdk/candidates";
+import type { CandidatePolicy } from "@contour/sdk/core";
 
 /**
  * Company-authored candidate policy for the overview surface. These are the

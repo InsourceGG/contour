@@ -4,7 +4,7 @@ import { useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { overviewManifest } from "@/host/manifest";
 import { componentLabels } from "@/host/components";
-import type { DensityPreference, HelpPreference, ManualPin, UserPreferences } from "@/sdk/types";
+import type { DensityPreference, HelpPreference, ManualPin, UserPreferences } from "@contour/sdk/core";
 import { apiPut, type ApiError } from "@/components/api";
 import { useCsrf } from "@/components/csrf";
 import { useToast } from "@/components/toast";

@@ -1,4 +1,4 @@
-import type { SurfaceComponentProps } from "@/sdk/react/types";
+import type { SurfaceComponentProps } from "@contour/sdk/react";
 
 /** Props for the company's component implementations (reader output typed per component). */
 export type HostComponentProps<D = unknown> = SurfaceComponentProps<D>;

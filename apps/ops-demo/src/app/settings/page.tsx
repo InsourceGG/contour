@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { resolveHostContext, tryHostUser } from "@/server/context";
 import { getBroker } from "@/server/broker";
 import { env } from "@/server/env";
-import { listGrantsForUser } from "@/server/oauth/grants";
+import { contour } from "@/server/contour";
 import { AppShell } from "@/components/shell/AppShell";
 import { PreferencesForm } from "@/components/settings/PreferencesForm";
 import { AgentsSection, type AgentGrant } from "@/components/settings/AgentsSection";
@@ -28,7 +28,7 @@ export default async function SettingsPage() {
     broker.getPreferences(ctx),
     broker.getHistory(ctx),
     broker.listDecisions(ctx, 20),
-    listGrantsForUser(ctx.subjectId, ctx.tenantId).catch(() => null),
+    contour.oauth.listGrantsForUser(ctx.subjectId, ctx.tenantId).catch(() => null),
   ]);
 
   const decisionRows: DecisionRow[] = decisions.map((d) => ({

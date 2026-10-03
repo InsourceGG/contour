@@ -1,8 +1,6 @@
 import "server-only";
 import { overviewManifest } from "@/host/manifest";
-import { hashJson } from "@/sdk/hash";
-import type { SurfaceManifest } from "@/sdk/types";
-import { ContourError } from "@/sdk/types";
+import { hashJson, type SurfaceManifest, ContourError } from "@contour/sdk/core";
 import { APP_ID, resolveHostUser } from "./context";
 import { adminClient } from "./supabase";
 

@@ -13,7 +13,7 @@ For a company integrating Contour into one of its own screens. Work through it t
 - [ ] Declare cross-component dependencies (e.g. annotated revenue needs visible metrics).
 - [ ] Provide a fully valid `defaultConfig` that includes every component.
 - [ ] Map each component ID to a React implementation (`src/host/components/index.ts`) and list it in `src/host/component-ids.ts`.
-- [ ] Run the contract suite: `pnpm exec vitest run tests/unit`. `defineAdaptiveApp` throws at startup on any registration error.
+- [ ] Run the contract suite: `pnpm -F @contour/sdk exec vitest run`. `defineAdaptiveApp` throws at startup on any registration error.
 
 ## 3. Write the candidate policy
 - [ ] Map each supported task to an approved arrangement and each explanation level to approved variants (`src/host/policy.ts`). Density follows the user's explicit preference; expertise never forces density or hides required controls.
@@ -27,7 +27,7 @@ For a company integrating Contour into one of its own screens. Work through it t
 
 ## 5. Map identity
 - [ ] Host session: verify the user with your auth provider on the server and resolve tenant membership and role from server records (`src/server/context.ts`). Request parameters, browser state, MCP arguments, and model text never establish identity.
-- [ ] Agent access: an OAuth 2.1 authorization server that issues audience-bound, scoped tokens to MCP clients (`src/server/oauth/*`). Grants are per user × client × tenant × app with allowed surfaces. Agents get `view:read`, `data:read`, and `view:propose` only. They never get commit.
+- [ ] Agent access: an OAuth 2.1 authorization server that issues audience-bound, scoped tokens to MCP clients (`packages/contour-sdk/src/server/oauth/*`, configured with `defineContourServer`). Grants are per user × client × tenant × app with allowed surfaces. Agents get `view:read`, `data:read`, and `view:propose` only. They never get commit.
 - [ ] Re-check membership and grant state on every broker call. Don't cache authorization.
 
 ## 6. Data store and isolation

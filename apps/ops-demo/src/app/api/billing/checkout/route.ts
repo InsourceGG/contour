@@ -1,13 +1,13 @@
-import { ContourError } from "@/sdk/types";
+import { ContourError } from "@contour/sdk/core";
 import { env } from "@/server/env";
-import { hostMutation } from "@/server/host-route";
+import { contour } from "@/server/contour";
 import { configuredPrice, stripe } from "@/server/stripe";
 import { adminClient } from "@/server/supabase";
 
 /** Creates a server-owned pending order bound to the verified subject,
  *  tenant and app, then a hosted Checkout Session for exactly one credit. */
 export async function POST(request: Request) {
-  return hostMutation(request, async (ctx) => {
+  return contour.hostMutation(request, async (ctx) => {
     const db = adminClient();
     const { data: allowed } = await db.rpc("contour_rate_limit", {
       p_bucket: `checkout:${ctx.tenantId}:${ctx.subjectId}`,

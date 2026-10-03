@@ -1,7 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import type { ReaderDef } from "@/sdk/broker";
-import { ContourError, type VerifiedContext } from "@/sdk/types";
+import { type ReaderDef, ContourError, type VerifiedContext } from "@contour/sdk/core";
 import { adminClient } from "@/server/supabase";
 import type { ActivityFeed, AlertList, MetricsSummary, RevenueSummary, TaskList } from "./types";
 

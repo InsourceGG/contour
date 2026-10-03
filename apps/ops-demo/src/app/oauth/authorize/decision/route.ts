@@ -1,4 +1,4 @@
-import { handleConsentDecision } from "@/server/oauth/consent";
+import { contour } from "@/server/contour";
 
 /**
  * Consent decision (Approve / Deny) from /oauth/authorize. Same-origin +
@@ -6,5 +6,5 @@ import { handleConsentDecision } from "@/server/oauth/consent";
  * server-side before a grant or code is created.
  */
 export async function POST(request: Request) {
-  return handleConsentDecision(request);
+  return contour.oauth.decision(request);
 }

@@ -1,6 +1,6 @@
 import { getBroker } from "@/server/broker";
-import { hostMutation } from "@/server/host-route";
+import { contour } from "@/server/contour";
 
 export async function PUT(request: Request) {
-  return hostMutation(request, (ctx, body) => getBroker().updatePreferences(ctx, body));
+  return contour.hostMutation(request, (ctx, body) => getBroker().updatePreferences(ctx, body));
 }

@@ -2,7 +2,7 @@ import "server-only";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { HostUser } from "@/server/context";
-import { csrfTokenFor } from "@/server/csrf";
+import { contour } from "@/server/contour";
 import { CsrfProvider } from "@/components/csrf";
 import { ContourMark } from "@/components/contour-art";
 import { tenantName } from "@/components/format";
@@ -21,7 +21,7 @@ export function AppShell({ user, children }: { user: HostUser; children: ReactNo
     ...(user.role === "operator" ? [{ href: "/console", label: "Console" }] : []),
   ];
   return (
-    <CsrfProvider token={csrfTokenFor(user)}>
+    <CsrfProvider token={contour.oauth.csrfTokenFor(user)}>
       <a href="#main" className="skip-link">
         Skip to main content
       </a>

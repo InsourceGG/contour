@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { overviewManifest } from "@/host/manifest";
-import type { DensityPreference, HelpPreference, ProposeRequest, ProposeResult, UserPreferences } from "@/sdk/types";
+import type { DensityPreference, HelpPreference, ProposeRequest, ProposeResult, UserPreferences } from "@contour/sdk/core";
 import { apiPost, newKey, type ApiError } from "@/components/api";
 import { useCsrf } from "@/components/csrf";
 import { IconAlert, IconInfo } from "@/components/icons";

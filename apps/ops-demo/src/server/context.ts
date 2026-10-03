@@ -1,22 +1,14 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { ALL_SCOPES, ContourError, type VerifiedContext } from "@/sdk/types";
+import { ALL_SCOPES, ContourError, type VerifiedContext } from "@contour/sdk/core";
+import type { HostUser } from "@contour/sdk/server";
 import { adminClient, userClient } from "./supabase";
+
+export type { HostUser };
 
 export const APP_ID = "ops-demo";
 export const DEFAULT_SURFACE = "overview";
 export const TENANT_COOKIE = "contour_tenant";
-
-export type HostUser = {
-  subjectId: string;
-  email: string;
-  displayName: string;
-  tenantId: string;
-  role: string;
-  roleVersion: number;
-  /** Supabase auth session ID (JWT `session_id`); binds CSRF tokens to this sign-in. */
-  sessionId: string;
-};
 
 /**
  * Resolves the verified host-app identity. The subject comes from Supabase

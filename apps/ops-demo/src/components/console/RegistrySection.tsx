@@ -1,4 +1,4 @@
-import type { SurfaceManifest } from "@/sdk/types";
+import type { SurfaceManifest } from "@contour/sdk/core";
 import { componentLabels } from "@/host/components";
 
 /** What the company registered: components, variants, guardrails, readers and templates. */

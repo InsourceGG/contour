@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { ContourError } from "@/sdk/types";
+import { ContourError } from "@contour/sdk/core";
 import { requireOperator } from "@/server/console";
 import { APP_ID } from "@/server/context";
-import { assertCsrf } from "@/server/csrf";
-import { errorResponse } from "@/server/http";
+import { contour } from "@/server/contour";
+import { errorResponse } from "@contour/sdk/server";
 import { adminClient } from "@/server/supabase";
 
 /** Tenant kill switch: enable/disable personal-agent (MCP) access for the operator's workspace. */
 export async function POST(request: Request) {
   try {
     const user = await requireOperator();
-    assertCsrf(request, user);
+    contour.assertCsrf(request, user);
     const body = z.strictObject({ enabled: z.boolean() }).safeParse(await request.json().catch(() => null));
     if (!body.success) throw new ContourError("INVALID_INPUT", "Expected {enabled:boolean}");
     const db = adminClient();

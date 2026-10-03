@@ -1,17 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ContourError, type Scope } from "@/sdk/types";
+import { ContourError, type Scope } from "@contour/sdk/core";
+import { AUTHORIZE_PARAM_NAMES, authorizePathFor, type RawParams } from "@contour/sdk/server";
 import { APP_ID, resolveHostUser, type HostUser } from "@/server/context";
-import { csrfTokenFor } from "@/server/csrf";
-import {
-  AUTHORIZE_PARAM_NAMES,
-  authorizePathFor,
-  buildClientRedirect,
-  validateAuthorizeRequest,
-  type RawParams,
-} from "@/server/oauth/authorize";
-import { isAgentAccessEnabled } from "@/server/oauth/tokens";
+import { contour } from "@/server/contour";
 
 export const metadata: Metadata = {
   title: "Authorize agent access · Contour",
@@ -63,12 +56,12 @@ function ErrorView({ title, message }: { title: string; message: string }) {
 
 export default async function AuthorizePage({ searchParams }: PageProps<"/oauth/authorize">) {
   const raw = (await searchParams) as RawParams;
-  const v = await validateAuthorizeRequest(raw);
+  const v = await contour.oauth.validateAuthorize(raw);
   if (v.kind === "fatal") return <ErrorView title="This authorization request is invalid" message={v.message} />;
   if (v.kind === "redirect_error") {
     // RFC 9700 §4.11.2: never auto-redirect errors to an unverified client's
     // redirect URI (open-redirector). Show the error and let the person choose.
-    const back = buildClientRedirect(v.redirectUri, { error: v.error, error_description: v.description, state: v.state });
+    const back = contour.oauth.buildClientRedirect(v.redirectUri, { error: v.error, error_description: v.description, state: v.state });
     return (
       <Shell>
         <h1 className="text-xl font-semibold">This authorization request is invalid</h1>
@@ -99,12 +92,12 @@ export default async function AuthorizePage({ searchParams }: PageProps<"/oauth/
   }
   if (needsLogin || !user) redirect(`/login?next=${encodeURIComponent(authorizePathFor(raw))}`);
 
-  const denyHref = buildClientRedirect(req.redirectUri, {
+  const denyHref = contour.oauth.buildClientRedirect(req.redirectUri, {
     error: "access_denied",
     error_description: "The user denied the request",
     state: req.state,
   });
-  if (!(await isAgentAccessEnabled(user.tenantId, APP_ID))) {
+  if (!(await contour.config.agentAccessEnabled(user.tenantId, APP_ID))) {
     return (
       <Shell>
         <h1 className="text-xl font-semibold">Agent access is turned off</h1>
@@ -159,7 +152,7 @@ export default async function AuthorizePage({ searchParams }: PageProps<"/oauth/
 
       <form method="post" action="/oauth/authorize/decision" className="mt-6">
         {hidden}
-        <input type="hidden" name="csrf" value={csrfTokenFor(user)} />
+        <input type="hidden" name="csrf" value={contour.oauth.csrfTokenFor(user)} />
         <input type="hidden" name="scope_choice" value="1" />
 
         <fieldset>

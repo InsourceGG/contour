@@ -11,6 +11,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // The SDK ships TypeScript source (workspace:*), compiled by this app.
+  transpilePackages: ["@contour/sdk"],
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

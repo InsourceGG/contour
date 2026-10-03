@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ManualPin, Placement, UserPreferences } from "@/sdk/types";
+import type { ManualPin, Placement, UserPreferences } from "@contour/sdk/core";
 import { apiPut } from "@/components/api";
 import { useCsrf } from "@/components/csrf";
 import { useToast } from "@/components/toast";

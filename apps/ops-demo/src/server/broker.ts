@@ -1,12 +1,11 @@
 import "server-only";
-import { createAdaptiveBroker, type AdaptiveBroker } from "@/sdk/broker";
-import { defineAdaptiveApp } from "@/sdk/registry";
+import { createAdaptiveBroker, defineAdaptiveApp, type AdaptiveBroker } from "@contour/sdk/core";
 import { overviewManifest } from "@/host/manifest";
 import { overviewPolicy } from "@/host/policy";
 import { COMPONENT_IDS } from "@/host/component-ids";
 import { readers } from "@/host/readers";
+import { contour } from "./contour";
 import { env } from "./env";
-import { supabaseStore } from "./store";
 import { jevSelector } from "./jev";
 
 let broker: AdaptiveBroker | null = null;
@@ -23,7 +22,7 @@ export function getBroker(): AdaptiveBroker {
       registry,
       policies: { overview: overviewPolicy },
       readers,
-      store: supabaseStore,
+      store: contour.store,
       selector: jevSelector,
       confidenceFloor: env.jevConfidenceFloor,
       appUrl: env.appUrl,

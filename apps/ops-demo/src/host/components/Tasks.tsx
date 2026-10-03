@@ -8,7 +8,7 @@ import { useCsrf } from "@/components/csrf";
 import { useToast } from "@/components/toast";
 import { formatDateTime } from "@/components/format";
 import { IconCheck } from "@/components/icons";
-import { useComponentState } from "@/sdk/react/component-state";
+import { useComponentState } from "@contour/sdk/react";
 import { HostCard, Unavailable } from "./HostCard";
 import { setting, type HostComponentProps } from "./types";
 

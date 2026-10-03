@@ -1,8 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { overviewManifest as M } from "@/host/manifest";
-import { hashJson } from "@/sdk/hash";
-import { ContourError, type VerifiedContext } from "@/sdk/types";
+import { hashJson, ContourError, type VerifiedContext } from "@contour/sdk/core";
 import { jevSelector } from "@/server/jev";
 import {
   admin,

@@ -1,5 +1,5 @@
-import { authorizationServerMetadata } from "@/server/oauth/config";
-import { corsPreflight, PUBLIC_CORS_HEADERS } from "@/server/oauth/http";
+import { corsPreflight, PUBLIC_CORS_HEADERS } from "@contour/sdk/server";
+import { contour } from "@/server/contour";
 
 /**
  * RFC 8414 Authorization Server Metadata. The issuer has no path component,
@@ -13,7 +13,7 @@ export async function GET(_req: Request, ctx: RouteContext<"/.well-known/oauth-a
   if (suffix !== "" && suffix !== "/api/mcp") {
     return Response.json({ error: "not_found" }, { status: 404, headers: PUBLIC_CORS_HEADERS });
   }
-  return Response.json(authorizationServerMetadata(), {
+  return Response.json(contour.oauth.authorizationServerMetadata(), {
     headers: { ...PUBLIC_CORS_HEADERS, "Cache-Control": "public, max-age=300" },
   });
 }

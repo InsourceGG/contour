@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Instrument_Sans } from "next/font/google";
 import { ToastProvider } from "@/components/toast";
-import { ComponentStateProvider } from "@/sdk/react/component-state";
+import { ComponentStateProvider } from "@contour/sdk/react";
 import "./globals.css";
 
 const instrument = Instrument_Sans({

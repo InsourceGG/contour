@@ -1,8 +1,8 @@
 "use client";
 
 import { useId, type ReactNode } from "react";
-import { useSurfaceChrome } from "@/sdk/react/surface-context";
-import type { Placement } from "@/sdk/types";
+import { useSurfaceChrome } from "@contour/sdk/react";
+import type { Placement } from "@contour/sdk/core";
 import { IconLock, IconPin } from "@/components/icons";
 
 type Props = {

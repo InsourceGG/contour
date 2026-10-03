@@ -1,4 +1,4 @@
-import type { LayoutTemplate, SurfaceManifest } from "@/sdk/types";
+import type { LayoutTemplate, SurfaceManifest } from "@contour/sdk/core";
 
 /**
  * Company-authored, versioned manifest for the "overview" surface of the

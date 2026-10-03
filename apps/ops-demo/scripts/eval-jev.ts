@@ -11,10 +11,8 @@ config({ path: ".env.local", quiet: true });
 
 import { overviewManifest as M } from "../src/host/manifest";
 import { overviewPolicy } from "../src/host/policy";
-import { configsEqual, describeCandidate, generateCandidates } from "../src/sdk/candidates";
-import type { SelectorInput } from "../src/sdk/broker";
-import type { ViewConfig } from "../src/sdk/types";
-import { createJevSelector } from "../src/server/jev";
+import { configsEqual, describeCandidate, generateCandidates, type SelectorInput, type ViewConfig } from "@contour/sdk/core";
+import { createJevSelector } from "@contour/sdk/jev";
 
 type Case = {
   id: string;
