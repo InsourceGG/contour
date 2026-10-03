@@ -251,7 +251,12 @@ async function processMessage(raw: unknown, auth: AuthState, request: Request, i
     case "ping":
       return { status: 200, body: rpcResult(id, {}, modern) };
     case "tools/list":
-      return { status: 200, body: rpcResult(id, { tools: listToolsPayload() }, modern) };
+      // 2026-07-28 list results carry caching hints. The tool set is static,
+      // but it is served only to authenticated callers, so cache privately.
+      return {
+        status: 200,
+        body: rpcResult(id, { tools: listToolsPayload(), ...(modern ? { ttlMs: 300_000, cacheScope: "private" } : {}) }, modern),
+      };
     case "tools/call": {
       const out = await callTool(params, auth, request, inBatch);
       if ("error" in out && out.error) return { status: 200, body: rpcError(id, out.error.code, out.error.message) };

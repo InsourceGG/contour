@@ -518,6 +518,14 @@ describe("token endpoint and MCP happy path", () => {
     });
     expect(discover.body.result.supportedVersions).toContain("2026-07-28");
     expect(discover.body.result._meta["io.modelcontextprotocol/serverInfo"].name).toBe("contour");
+
+    // Regression (found with Claude Code 2.1.288): modern list results must carry caching hints.
+    const list = await mcp(flow.accessToken, "tools/list", { _meta: meta }, { "MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/list" });
+    expect(list.res.status).toBe(200);
+    expect(list.body.result.resultType).toBe("complete");
+    expect(typeof list.body.result.ttlMs).toBe("number");
+    expect(["public", "private"]).toContain(list.body.result.cacheScope);
+    expect(list.body.result.tools.map((t: { name: string }) => t.name).sort()).toEqual(["describe_surface", "get_view", "propose_view", "read_component_data"]);
   });
 
   it("ignores spoofed identity: extra tenant/subject arguments are rejected by the closed schema", async () => {
