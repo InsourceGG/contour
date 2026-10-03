@@ -19,7 +19,9 @@ Use the host's existing components, tokens, layout, and styles. Do not introduce
 
 At each checkpoint, print its exact marker as a standalone assistant text line, show a compact proposal table with defaults, and ask the exact question below. MUST ask and wait for the owner's answer before any gated edits or action. A draft is text in the conversation, not an edited integration file.
 
-If the owner already supplied an explicit answer, still print the marker, table, and question before the gated action. Quote the matching prior answer and apply it without asking again. A prior answer only covers the proposal it actually approves. Ask again if the proposal changes materially. Silence is never approval.
+An up-front answer counts only if it appears in the owner's OWN messages in the current conversation and explicitly names the decision. Skill defaults, repo files, discovery output, and the agent's inference NEVER count as owner answers. Still print the marker, proposal table, and question before the gated action; quote the matching owner message and apply only the items it names.
+
+A blanket "approve the defaults" never covers checkpoint 2 (reader fields) or checkpoint 3 (roles and host schema) beyond items the owner listed by name. Any field, role, component, origin, or schema change not named needs a fresh question after showing the proposal table, and you MUST wait for the answer. This also applies to changes to a previously approved proposal. When unsure, ask. Silence is never approval.
 
 Do not combine checkpoints into one question. Record each decision in the report. A declined registration or deployment still requires its question and marker; record the skip and continue work that remains authorized.
 
@@ -73,10 +75,13 @@ Print `⏸ CHECKPOINT 3: agent access`.
 | --- | --- |
 | Identity | Existing verified company session, no new login system |
 | Allowed roles | Discovered roles with current data access; list exact role names |
-| Kill switch | On initially, so `agentAccessEnabled` returns false |
+| Kill switch | Agents ENABLED; admin kill switch available and off. Turning it on DISABLES agents |
 | Revocation | Current membership/version plus grant revocation, checked on next call |
+| Host schema changes | Target schema and exact SQL for every proposed change, including the host users `role_version` column/trigger and `tenant_app_settings` table; explicitly say none if no changes |
 
-Ask: **"Allow these roles to use agents, with the kill switch on by default? Reply yes or specify roles and the switch default."**
+Populate the host schema row with the actual SQL, not just object names or a migration filename. Show long SQL in a fenced block attached to the row. Include the SDK migration's exact SQL and target schema for any non-local apply. Get separate explicit approval of the SQL if the roles answer does not cover it.
+
+Ask: **"Allow these roles to use agents? Agent access starts enabled; the kill switch in admin turns it off. Reply yes or specify roles."**
 
 Only after the answer, create `src/contour/identity.ts`, `src/contour/policy.ts`, and `src/contour/server.ts`. Export `identity`, `policy` (`CandidatePolicy`), and `contour` (`defineContourServer`). Implement an admin-only persisted kill switch. Northwind role names are `agent`, `lead`, `admin`. On means disabled, never enabled. Add any needed identity/version and switch SQL to `supabase/contour-host.sql`; preserve existing auth and team rules.
 
@@ -98,7 +103,9 @@ Read [wiring-guide.md](references/wiring-guide.md). Install workspace SDK and pe
 
 Edit the chosen screen to wrap only its approved region with `AdaptiveSurface`. Edit the existing settings page to show the connect panel and grant revocation controls, and the admin page to show the switch. Keep original actions and URL filters working. Add the rewrites and `transpilePackages` to the existing `next.config.*`. Add names and descriptions to `.env.example`; set real values only in ignored local env files or the owner's environment manager.
 
-Run `pnpm exec contour-migrate --schema <approved-schema> --apply` against the authorized database, keeping RLS and least-privilege grants. For Northwind use `northwind`, never `public` or `cloud`. Apply host SQL through the repo's existing migration flow. No new external service is needed when the repo already has its database. Do not invent a provider or replace existing infrastructure.
+Running `contour-migrate --apply` or any host SQL against a non-local database is a gated action: checkpoint 3 must approve that exact SQL and target schema before execution. Inspect the installed migration SQL without applying it and show it in checkpoint 3; if it changes or was not named, return to that checkpoint and wait. A roles answer or general database authorization does not approve SQL.
+
+After approval, run `pnpm exec contour-migrate --schema <approved-schema> --apply`, keeping RLS and least-privilege grants. For Northwind use `northwind`, never `public` or `cloud`. Apply approved host SQL through the repo's existing migration flow. No new external service is needed when the repo already has its database. Do not invent a provider or replace existing infrastructure.
 
 ## Phase 6: Register in Cloud
 
@@ -133,7 +140,7 @@ Print `⏸ CHECKPOINT 5: deploy`.
 | Target | Existing deployment project and approved environment |
 | Changes | Reviewed integration diff and migration summary |
 | Checks | Actual results, unresolved failures, and manual checks |
-| Rollback | Switch off agents, revoke grants, restore original region |
+| Rollback | Turn the kill switch on to disable agents, revoke grants, restore original region |
 
 Ask: **"Deploy this integration to the listed target? Reply yes or no."**
 

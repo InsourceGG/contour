@@ -20,7 +20,7 @@ export const identity: {
 
 Here `currentUser` and `getMembership` are host functions implemented below. `HostUser` contains `subjectId`, `sessionId`, `tenantId`, `role`, `roleVersion` (number), `displayName`, `email`. `Membership` contains `tenantId`, `subjectId`, `appId`, `role`, `roleVersion` (number), `dataAccess`, `status` (`active` or `suspended`), `displayName`.
 
-Read the original session verifier and membership storage. Only verified server-side identity chooses the subject. A cookie may select among actual memberships, never invent one. Reload membership for OAuth/MCP requests, including calls with a still-valid access token. Missing user/membership fails closed; database failure is an error, never an anonymous fallback or permission grant.
+Read the original session verifier and membership storage. Only verified server-side identity chooses the subject. A cookie may select among actual memberships, never invent one. Reload membership for OAuth/MCP requests, including calls with a still-valid access token. `currentUser` returns null only for a signed-out user. A signed-in user with no active membership must throw `ContourError("FORBIDDEN")`; returning null would cause a login loop. Database failure is an error, never an anonymous fallback or permission grant.
 
 ## A: Supabase Auth (Acme)
 
@@ -28,6 +28,7 @@ Reuse the existing server `userClient` and privileged `adminClient`. Call `auth.
 
 ```ts
 import { cookies } from "next/headers";
+import { ContourError } from "@contour/sdk/core";
 import type { HostUser, Membership } from "@contour/sdk/server";
 import { adminClient, userClient } from "@/server/supabase";
 
@@ -43,7 +44,7 @@ async function currentUser(): Promise<HostUser | null> {
   if (dbError) throw new Error("Membership lookup failed");
   const requested = (await cookies()).get("contour_tenant")?.value;
   const membership = rows?.find((row) => row.tenant_id === requested) ?? rows?.[0];
-  if (!membership) return null;
+  if (!membership) throw new ContourError("FORBIDDEN", "No active membership");
   const { data: session } = await client.auth.getSession();
   const token = session.session?.access_token;
   if (!token) return null;
@@ -76,13 +77,14 @@ Adapt column names to the real schema. Keep existing role eligibility checks. Ne
 
 Reuse `getSession()` which verifies HMAC and expiry for `nw_session` and reloads the current user's role/team. Its baseline `Session` has no sessionId or roleVersion. In the integrated copy, provide a stable sign-in identifier, preferably an opaque random ID carried in the signed payload. A server-side hash of the already-verified signed cookie is also a stable per-cookie identifier. Never use the raw cookie or a constant subject ID as sessionId.
 
-Add a persisted `role_version` counter to the authoritative Northwind user record, with an atomic database increment on changes to role, team, access, or suspension. Backfill safely, default to 1, and preserve baseline session verification. Do not hardcode version 1 forever or use timestamps with possible collisions. Keep current authorization attributes live, not copied indefinitely from a token.
+Propose a persisted `role_version` counter on the authoritative Northwind user record. Recommend a database trigger on the role/team/access columns (and suspension if present) to increment it atomically when those values change, rather than app-level increments that other write paths can bypass. Backfill safely, default to 1, and preserve baseline session verification. Show the exact column/trigger SQL, any `tenant_app_settings` SQL, and target schema in checkpoint 3 and wait for approval before implementing them. Do not hardcode version 1 forever or use timestamps with possible collisions. Keep current authorization attributes live, not copied indefinitely from a token.
 
 The following example assumes checkpoint 3 approved these host schema changes and `role_version` exists. Implement this only in the integration target, never this task's pristine Northwind baseline.
 
 ```ts
 import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
+import { ContourError } from "@contour/sdk/core";
 import type { HostUser, Membership } from "@contour/sdk/server";
 import { getSession } from "@/lib/session";
 import { getDb } from "@/lib/db";
@@ -107,7 +109,8 @@ async function currentUser(): Promise<HostUser | null> {
   if (!session) return null;
   const membership = await getMembership(session.userId, TENANT_ID, APP_ID);
   const cookie = (await cookies()).get("nw_session")?.value;
-  if (!membership || membership.status !== "active" || !cookie) return null;
+  if (!membership || membership.status !== "active") throw new ContourError("FORBIDDEN", "No active membership");
+  if (!cookie) throw new ContourError("FORBIDDEN", "Verified session cookie missing");
   return {
     subjectId: session.userId,
     sessionId: createHash("sha256").update(cookie).digest("hex"),
@@ -123,6 +126,6 @@ Implement `sessionForContext(ctx: VerifiedContext): Promise<Session>` for reader
 
 ## Kill switch and grants
 
-Persist the owner-approved switch per company/app. `agentAccessEnabled(tenantId, appId)` returns false when killed, missing, or outside the approved app/company. Only authenticated admins may change it, with same-origin and CSRF checks; expose a positive UI label such as "Allow agent access" so off corresponds to kill switch on. Do not disable the host's original app.
+Persist the owner-approved switch per company/app. The default proposal is agents ENABLED, with the admin kill switch available and off. Turning the kill switch on DISABLES agents. `agentAccessEnabled(tenantId, appId)` returns false when killed, missing, or outside the approved app/company; initialize approved settings explicitly, never treat a missing row as enabled. Only authenticated admins may change it, with same-origin and CSRF checks; expose a positive UI label such as "Allow agent access" so off corresponds to kill switch on. Do not disable the host's original app.
 
 Use `contour.oauth.listGrantsForUser`, `revokeGrant`, and `revokeAllGrantsForApp` for the host's connection controls with fresh identity checks and CSRF. `view:commit` is host-only. Current memberships, switch state, and roleVersion must invalidate agent access on the next call.

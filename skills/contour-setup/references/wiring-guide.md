@@ -11,18 +11,24 @@ Add `@contour/sdk: workspace:*` to the host package in this monorepo, with its e
 ```ts
 import "server-only";
 import { defineContourServer } from "@contour/sdk/server";
-import { appDb } from "./db";
+import { getAppDb } from "./db";
 import { identity, agentAccessEnabled } from "./identity";
 
-const cloudOrigin = process.env.CONTOUR_CLOUD_URL
-  ? new URL(process.env.CONTOUR_CLOUD_URL).origin : undefined;
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing required environment variable ${name}`);
+  return value;
+}
 export const contour = defineContourServer({
-  appUrl: new URL(process.env.APP_URL!).origin,
+  get appUrl() { return new URL(required("APP_URL")).origin; },
   appId: "northwind", resourceName: "Northwind Support",
-  surfaces: ["desk"], db: appDb, schema: "northwind",
-  csrfSecret: process.env.CONTOUR_CSRF_SECRET!,
+  surfaces: ["desk"], get db() { return getAppDb(); }, schema: "northwind",
+  get csrfSecret() { return required("CONTOUR_CSRF_SECRET"); },
   identity, agentAccessEnabled,
-  trustedClients: cloudOrigin ? [`${cloudOrigin}/oauth/client.json`] : [],
+  get trustedClients() {
+    const cloudUrl = process.env.CONTOUR_CLOUD_URL;
+    return cloudUrl ? [`${new URL(cloudUrl).origin}/oauth/client.json`] : [];
+  },
   consent: {
     productName: "Northwind Support",
     dataCategories: ["Authorized support tickets", "Service metrics", "Knowledge articles"],
@@ -30,9 +36,19 @@ export const contour = defineContourServer({
 });
 ```
 
-Validate required env names at server startup. Build trustedClients only when a Cloud origin is configured; use an empty array when registration was skipped. Never treat a missing secret as an empty string. `db.ts` is host integration code, not a new SDK API.
+Read config lazily through getters, as `apps/ops-demo/src/server/env.ts` does. Do not evaluate `new URL(process.env...)` or required secrets at import time; validate them when server config is used. In `db.ts`, implement host helper `getAppDb()` to create/cache the unscoped client only when called. Build trustedClients only when a Cloud origin is configured; use an empty array when registration was skipped. Never treat a missing secret as an empty string. `db.ts` is host integration code, not a new SDK API.
 
-In `broker.ts`, call `defineAdaptiveApp([manifest], { readerIds: new Set(readers.keys()), implementedComponentIds: componentIds })`, then `createAdaptiveBroker({ registry, policies: { desk: policy }, readers, store: contour.store, selector, confidenceFloor, appUrl })` from `@contour/sdk/core`. Create `selector` via `createJevSelector({ apiKey, model, timeoutMs })` from `@contour/sdk/jev`, using the owner's existing JEV credentials. Use fixture selectors only in isolated tests, never as a production provider fallback.
+In `broker.ts`, call `defineAdaptiveApp([manifest], { readerIds: new Set(readers.keys()), implementedComponentIds: componentIds })`, then `createAdaptiveBroker({ registry, policies: { desk: policy }, readers, store: contour.store, selector, confidenceFloor, appUrl })` from `@contour/sdk/core`. `createJevSelector` from `@contour/sdk/jev` takes getters:
+
+```ts
+const selector = createJevSelector({
+  apiKey: () => process.env.AI_GATEWAY_API_KEY ?? "",
+  model: () => process.env.JEV_MODEL ?? "typesafe-ai/jev",
+  timeoutMs: () => Number(process.env.JEV_TIMEOUT_MS ?? 4000),
+});
+```
+
+Use the owner's existing credentials. Use fixture selectors only in isolated tests, never as a production provider fallback.
 
 Export only `manifest`, `policy`, `readers`, `componentIds` from `index.ts`. Importing it must not call `cookies()`, start the server, instantiate the selector, load client TSX, or require production env. `readers` may import host data functions, but must access env/identity lazily inside `read`. This lets verify load the registration without a Next request. `contour.config.json` points to this module with an app-relative path.
 
@@ -111,7 +127,7 @@ export default config;
 
 Add `src/app/oauth/authorize/page.tsx` using the host layout and `contour.oauth.validateAuthorize(raw)` for the validated consent details. Redirect signed-out visitors through `identity.loginUrl`. Use `contour.oauth.csrfTokenFor(user)` and SDK decision POST. Inspect `AuthorizeValidation` in the installed SDK for its exact fields; do not fabricate a React consent export. Show only agent scopes (`view:read`, `data:read`, `view:propose`) and preserve all PKCE/resource/state checks.
 
-Run `pnpm exec contour-migrate --schema northwind --apply` with the existing authorized database configuration. Use the SDK CLI's installed help for connection options. Keep schema isolation, RLS, and least-privilege grants. Apply host role-version and switch changes separately through repo migrations. Do not seed real records or drop tables.
+Before running `contour-migrate --apply` or any host SQL against a non-local database, checkpoint 3 must show and approve the exact SQL and target schema. Inspect the installed migration SQL without applying it first. General approval of roles or database access is insufficient. After approval, run `pnpm exec contour-migrate --schema northwind --apply` with the existing authorized database configuration. Use the SDK CLI's installed help for connection options. Keep schema isolation, RLS, and least-privilege grants. Apply approved host role-version and switch changes separately through repo migrations. Do not seed real records or drop tables.
 
 ## Adaptive region and preview
 
@@ -143,6 +159,7 @@ Use `ConnectAgentPanel` from `@contour/sdk/react` in the existing settings secti
 | CONTOUR_CSRF_SECRET | Strong independent CSRF secret | Server only |
 | CONTOUR_CLOUD_URL | Owner's Cloud origin | Approved origin may be passed to panel |
 | CONTOUR_PROJECT_TOKEN | Optional owner registration authorization | Server/script only, never panel |
-| JEV_API_KEY, JEV_MODEL | Selector credentials/model; adapt existing names | Server only |
+| AI_GATEWAY_API_KEY | Selector credential | Server only |
+| JEV_MODEL, JEV_TIMEOUT_MS | Selector model and timeout; lazy defaults above | Server only |
 
 Keep actual values in ignored env files or the established environment manager. Never add `NEXT_PUBLIC_` to secrets. No token values in reports or logs. For later Vercel deployment, upgrade the outdated CLI with `npm i -g vercel@latest` or `pnpm add -g vercel@latest` before using its current deployment features.
