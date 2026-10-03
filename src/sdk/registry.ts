@@ -75,7 +75,7 @@ export function validateManifest(
         .sort((a, b) => a.allowedRegions.length - b.allowedRegions.length);
       for (const c of required) {
         const candidates = c.locked
-          ? manifest.defaultConfig.placements.filter((p) => p.componentId === c.id).map((p) => p.regionId)
+          ? (manifest.defaultConfig?.placements ?? []).filter((p) => p.componentId === c.id).map((p) => p.regionId)
           : c.allowedRegions.filter((r) => regionIds.includes(r));
         const slot = candidates.find((r) => (remaining.get(r) ?? 0) > 0);
         if (!slot) {

@@ -862,11 +862,11 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
     const owner = ownerOf(ctx);
     const input = parse(SnapshotOpSchema, raw);
     const active = await store.getActiveView(owner);
+    if ((active?.revision ?? 0) !== input.expectedRevision) {
+      throw new ContourError("STALE_REVISION", "The view changed; reload and try again", { currentRevision: active?.revision ?? 0 });
+    }
     if (!active || active.parentRevision === null) {
       throw new ContourError("INCOMPATIBLE_SNAPSHOT", "There is no earlier view to restore");
-    }
-    if (active.revision !== input.expectedRevision) {
-      throw new ContourError("STALE_REVISION", "The view changed; reload and try again", { currentRevision: active.revision });
     }
     const target = await store.getHistoryEntry(owner, active.parentRevision);
     if (!target) throw new ContourError("INCOMPATIBLE_SNAPSHOT", "The earlier view is outside the retained history");

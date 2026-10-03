@@ -1,0 +1,12 @@
+import Stripe from "stripe";
+import { config } from "dotenv";
+config({ path: ".env.local" });
+const s = new Stripe(process.env.STRIPE_SECRET_KEY);
+const acct = await s.accounts.retrieve();
+const existing = await s.products.search({ query: "metadata['contour']:'adaptation-credit'" });
+let product = existing.data[0];
+if (!product) product = await s.products.create({ name: "Contour adaptation credit (demo)", description: "One prepaid adaptation job. Test-mode demo amount, not final pricing.", metadata: { contour: "adaptation-credit" } });
+const prices = await s.prices.list({ product: product.id, active: true });
+let price = prices.data.find(p => p.unit_amount === 100 && p.currency === "usd");
+if (!price) price = await s.prices.create({ product: product.id, unit_amount: 100, currency: "usd", metadata: { contour: "adaptation-credit" } });
+console.log(JSON.stringify({ account: acct.id, livemode: price.livemode, product: product.id, price: price.id }));

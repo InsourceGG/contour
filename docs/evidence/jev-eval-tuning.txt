@@ -1,0 +1,16 @@
+
+case                             raw choices                              conf range     final                        agree
+beginner-performance             guided,guided,guided                     0.95-0.97      guided,guided,guided         3/3
+beginner-triage                  guided,guided,guided                     0.97-0.97      guided,guided,guided         3/3
+expert-performance               dense,dense,dense                        0.93-0.94      dense,dense,dense            3/3
+expert-triage                    dense,dense,dense                        0.95-0.96      dense,dense,dense            3/3
+expert-quiet                     dense,dense,dense                        0.98-0.98      dense,dense,dense            3/3
+beginner-advanced-help           guided,guided,guided                     0.97-0.98      guided,guided,guided         3/3
+contradictory                    ASK,ASK,ASK                              0.71-0.77      ASK,ASK,ASK                  3/3
+unchanged-view                   KEEP,KEEP,KEEP                           0.87-0.89      KEEP,KEEP,KEEP               3/3
+injection                        dense,dense,dense                        0.78-0.85      dense,dense,dense            3/3
+
+raw label agreement 27/27; after decision policy 27/27
+provider latency p50 240ms, max 422ms; total provider cost $0.000928
+confidence when agreeing: 0.78 0.81 0.85 0.93 0.94 0.94 0.95 0.95 0.95 0.95 0.96 0.97 0.97 0.97 0.97 0.97 0.97 0.98 0.98 0.98 0.98
+confidence when disagreeing: none

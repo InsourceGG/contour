@@ -34,7 +34,7 @@ export const overviewPolicy: CandidatePolicy = {
   levels: {
     guided: {
       label: "Guided",
-      summary: "More explanations: annotated charts, metric definitions, step-by-step help.",
+      summary: "Best fit for beginners or anyone who wants explanations: annotated charts, metric definitions, detailed task rows and step-by-step help.",
       defaultDensity: "comfortable",
       variants: { revenue: "annotated", metrics: "annotated", tasks: "detailed", activity: "feed" },
       settings: { revenue: { showLegend: true }, metrics: { set: "core" }, tasks: { limit: 5 }, activity: { limit: 5 } },
@@ -42,7 +42,7 @@ export const overviewPolicy: CandidatePolicy = {
     },
     balanced: {
       label: "Balanced",
-      summary: "Task focus with moderate detail and short tips.",
+      summary: "Best fit for users with some familiarity: task-focused arrangement with moderate detail and short tips.",
       defaultDensity: "comfortable",
       variants: { revenue: "summary", metrics: "cards", tasks: "list", activity: "feed" },
       settings: { revenue: { showLegend: true }, metrics: { set: "core" }, tasks: { limit: 5 }, activity: { limit: 10 } },
@@ -50,7 +50,7 @@ export const overviewPolicy: CandidatePolicy = {
     },
     dense: {
       label: "Dense",
-      summary: "Compact, information-rich task view; help collapsed unless requested.",
+      summary: "Best fit for experts: compact, information-rich task view with daily values and extended metrics; help collapsed unless requested.",
       defaultDensity: "compact",
       variants: { revenue: "dense", metrics: "strip", tasks: "compact", activity: "compact" },
       settings: { revenue: { showLegend: false }, metrics: { set: "extended" }, tasks: { limit: 10 }, activity: { limit: 20 } },

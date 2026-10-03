@@ -1,0 +1,9 @@
+
+case                             raw choices                              conf range     final                        agree
+holdout-beginner-perf-compact    guided,guided,guided                     0.84-0.86      guided,guided,guided         3/3
+holdout-expert-triage-help       dense,dense,dense                        0.91-0.92      dense,dense,dense            3/3
+
+raw label agreement 6/6; after decision policy 6/6
+provider latency p50 255ms, max 414ms; total provider cost $0.000206
+confidence when agreeing: 0.84 0.85 0.86 0.91 0.92 0.92
+confidence when disagreeing: none
