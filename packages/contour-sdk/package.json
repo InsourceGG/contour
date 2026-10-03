@@ -7,7 +7,8 @@
     "./core": "./src/core/index.ts",
     "./react": "./src/react/index.ts",
     "./server": "./src/server/index.ts",
-    "./jev": "./src/jev/index.ts"
+    "./jev": "./src/jev/index.ts",
+    "./testing": "./src/testing/index.ts"
   },
   "scripts": {
     "test": "vitest run",

@@ -56,6 +56,10 @@ export type ContourServerConfig = {
     currentUser(): Promise<HostUser | null>;
     /** Relative path in the host app that signs the user in, then returns to `nextPath`. */
     loginUrl(nextPath: string): string;
+    /**
+     * Membership for a subject in a tenant and app. The store delegates to this,
+     * so it must read the host's own records and must not call `store.getMembership`.
+     */
     getMembership(subjectId: string, tenantId: string, appId: string): Promise<Membership | null>;
   };
   /** Company-wide and tenant agent switch for MCP access (both must be on). */
@@ -87,7 +91,7 @@ export type ContourServer = {
   };
   /** Builds the MCP POST handler for a tool set. */
   mcp(handlerOpts: { tools: McpToolSet; instructions: string }): (req: Request) => Promise<Response>;
-  /** supabaseStore({ client: db, schema }) with this config's agent switch. */
+  /** supabaseStore({ client: db, schema }) with this config's agent switch and identity membership. */
   store: ContourStore;
   /** Same-origin + session-bound CSRF header check for host mutations. Throws ContourError FORBIDDEN. */
   assertCsrf(req: Request, user: HostUser): void;
@@ -123,6 +127,9 @@ export function defineContourServer(cfg: ContourServerConfig): ContourServer {
     client: () => cfg.db,
     schema: cfg.schema,
     agentAccessEnabled: (tenantId, appId) => cfg.agentAccessEnabled(tenantId, appId),
+    // Resolved per call so a getter-backed identity config stays lazy. The
+    // identity adapter must not call `store.getMembership` (it would recurse).
+    getMembership: (subjectId, tenantId, appId) => cfg.identity.getMembership(subjectId, tenantId, appId),
   });
 
   /** OAuth 2.1 token endpoint: authorization_code (+PKCE S256) and refresh_token (rotating). */

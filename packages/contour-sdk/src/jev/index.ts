@@ -24,7 +24,7 @@ export function buildJevRequest(input: SelectorInput, model: string) {
   ].join("; ");
 
   const lines = [
-    `Surface: operations overview dashboard.`,
+    input.surface ? `Surface: ${input.surface.label}: ${input.surface.description}` : `Surface: operations overview dashboard.`,
     `Explicit task: ${input.task.label}: ${input.task.description}`,
     `Explicit expertise: ${input.expertise.label}: ${input.expertise.description}`,
     `Stated preferences: ${prefs}.`,

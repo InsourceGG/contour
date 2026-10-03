@@ -1,10 +1,41 @@
 import "server-only";
-import { defineContourServer } from "@contour/sdk/server";
+import { defineContourServer, type Membership } from "@contour/sdk/server";
 import { ContourError } from "@contour/sdk/core";
 import { isAgentAccessEnabled } from "./agent-access";
 import { APP_ID, resolveHostUser } from "./context";
 import { env } from "./env";
 import { adminClient } from "./supabase";
+
+/**
+ * Acme's membership lookup: the same `memberships` row the store used to read
+ * itself. It reads the table directly. The store delegates to this adapter, so
+ * calling `contour.store.getMembership` here would recurse forever.
+ */
+async function getMembership(subjectId: string, tenantId: string, appId: string): Promise<Membership | null> {
+  const { data, error } = await adminClient()
+    .schema("public")
+    .from("memberships")
+    .select("tenant_id,subject_id,app_id,role,role_version,data_access,status,display_name")
+    .eq("subject_id", subjectId)
+    .eq("tenant_id", tenantId)
+    .eq("app_id", appId)
+    .maybeSingle();
+  if (error) {
+    console.error("[contour] identity.getMembership failed", error.message);
+    throw new ContourError("INTERNAL", "Preference store unavailable");
+  }
+  if (!data) return null;
+  return {
+    tenantId: data.tenant_id,
+    subjectId: data.subject_id,
+    appId: data.app_id,
+    role: data.role,
+    roleVersion: data.role_version,
+    dataAccess: data.data_access,
+    status: data.status,
+    displayName: data.display_name,
+  };
+}
 
 /**
  * Contour's OAuth authorization server, MCP resource server, store and host
@@ -36,7 +67,7 @@ export const contour = defineContourServer({
       }
     },
     loginUrl: (nextPath) => `/login?next=${encodeURIComponent(nextPath)}`,
-    getMembership: (subjectId, tenantId, appId) => contour.store.getMembership(subjectId, tenantId, appId),
+    getMembership,
   },
   agentAccessEnabled: isAgentAccessEnabled,
 });

@@ -9,3 +9,4 @@ export { ComponentStateProvider, useComponentState, useClearComponentState } fro
 export { SurfaceChromeContext, useSurfaceChrome } from "./surface-context";
 export { breakpointForWidth, regionBlocks, regionOrdersDiffer, sortedBreakpoints, surfaceCss, type RegionBlock } from "./layout";
 export { densityFromToken, type Density, type SurfaceChrome, type SurfaceComponentMap, type SurfaceComponentProps } from "./types";
+export { ConnectAgentPanel, type ConnectAgentPanelProps } from "./ConnectAgentPanel";

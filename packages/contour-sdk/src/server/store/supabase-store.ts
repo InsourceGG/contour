@@ -19,6 +19,11 @@ export type SupabaseStoreOptions = {
   schema: string;
   /** Company + tenant agent switch (both must be on). Errors fail closed as INTERNAL. */
   agentAccessEnabled(tenantId: string, appId: string): Promise<boolean>;
+  /**
+   * Resolves membership from the host's identity adapter. When omitted the
+   * store reads the `memberships` table in `schema` (ops-demo's behaviour).
+   */
+  getMembership?: (subjectId: string, tenantId: string, appId: string) => Promise<Membership | null>;
 };
 
 function fail(op: string, error: { message: string } | null): never {
@@ -104,6 +109,7 @@ export function supabaseStore(opts: SupabaseStoreOptions): ContourStore {
 
   const store: ContourStore = {
     async getMembership(subjectId, tenantId, appId): Promise<Membership | null> {
+      if (opts.getMembership) return opts.getMembership(subjectId, tenantId, appId);
       const { data, error } = await db()
         .from("memberships")
         .select("tenant_id,subject_id,app_id,role,role_version,data_access,status,display_name")

@@ -122,6 +122,8 @@ export interface ContourStore {
 }
 
 export type SelectorInput = {
+  /** The surface being adapted, from its manifest. Names the screen in the prompt. */
+  surface?: { label: string; description: string };
   task: { id: string; label: string; description: string };
   expertise: { id: string; label: string; description: string };
   preferences: { density?: string; help?: string };
@@ -591,6 +593,7 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
 
       const matchesCurrent = candidates.find((c) => configsEqual(c.config, snapshot.config))?.id ?? null;
       const selection = await selector.select({
+        surface: { label: manifest.label, description: manifest.description },
         task,
         expertise,
         preferences: req.preferences ?? {},
