@@ -5,6 +5,7 @@
 #   scripts/demo/northwind.sh recorded   # disposable worktree with HEAD's integrated Northwind, tables installed
 #   scripts/demo/northwind.sh status     # what is set up right now
 #   scripts/demo/northwind.sh reset      # undo everything the demo created
+#   scripts/demo/northwind.sh restore    # re-install DB state the deployed Northwind needs (after reset)
 #
 # The worktree lives at ../contour-demo (next to the main checkout) on a throwaway
 # branch demo/northwind-<timestamp>. Remote SQL runs through the Supabase CLI link
@@ -291,6 +292,22 @@ SQL
   info "Untouched: main checkout apps/northwind, northwind business tables, $BASELINE_TAG tag, Acme."
 }
 
+# Re-install the database state the DEPLOYED (main checkout) Northwind needs.
+# The demo workspace and the deployed app share one database, so run this after
+# `reset` if you are not immediately re-running the live setup.
+cmd_restore() {
+  need node; need supabase
+  head_has_integration || die "HEAD has no integrated apps/northwind (src/contour/ missing)."
+  step "Restoring $SCHEMA for the deployed Northwind"
+  node "$MIGRATE" --schema "$SCHEMA" --apply --workdir "$LINK_DIR" >/dev/null
+  ok "$SCHEMA installed"
+  if [[ -f "$MAIN/apps/northwind/supabase/contour-host.sql" ]]; then
+    sql_file "$MAIN/apps/northwind/supabase/contour-host.sql"
+    ok "applied apps/northwind/supabase/contour-host.sql"
+  fi
+  step "Done. The deployed Northwind's agent features work again."
+}
+
 cmd_status() {
   need git; need node
   step "Demo worktree"
@@ -327,6 +344,7 @@ case "${1:-}" in
   recorded) cmd_recorded ;;
   reset) cmd_reset ;;
   status) cmd_status ;;
+  restore) cmd_restore ;;
   -h|--help|help) usage 0 ;;
   *) usage 2 ;;
 esac

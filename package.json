@@ -9,6 +9,7 @@
     "demo:northwind:fresh": "bash scripts/demo/northwind.sh fresh",
     "demo:northwind:reset": "bash scripts/demo/northwind.sh reset",
     "demo:northwind:recorded": "bash scripts/demo/northwind.sh recorded",
-    "demo:northwind:status": "bash scripts/demo/northwind.sh status"
+    "demo:northwind:status": "bash scripts/demo/northwind.sh status",
+    "demo:northwind:restore": "bash scripts/demo/northwind.sh restore"
   }
 }

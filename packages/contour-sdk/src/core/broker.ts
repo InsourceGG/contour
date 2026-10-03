@@ -177,6 +177,8 @@ export type BrokerOptions = {
   store: ContourStore;
   selector: Selector;
   confidenceFloor: number;
+  /** "none" for hosts that don't meter adaptation jobs; only affects agent-facing wording. */
+  billing?: "credits" | "none";
   appUrl: string;
   readerTimeoutMs?: number;
   maxReaderOutputBytes?: number;
@@ -384,7 +386,7 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
       supportedPreferences: { density: ["comfortable", "compact"], help: ["auto", "show", "hide"] },
       limits: { maxNoteLength: manifest.limits.maxNoteLength, proposalTtlSeconds: manifest.limits.proposalTtlSeconds },
       previewSemantics:
-        "propose_view prepares a pending preview that may appear live in the host dashboard. It returns a preview URL for a full comparison. Nothing is saved until the signed-in user chooses Accept in the host app; the user can also Keep current. Agents cannot commit. Each READY proposal consumes one prepaid adaptation credit.",
+        "propose_view prepares a pending preview that may appear live in the host dashboard. It returns a preview URL for a full comparison. Nothing is saved until the signed-in user chooses Accept in the host app; the user can also Keep current. Agents cannot commit." + (opts.billing === "none" ? "" : " Each READY proposal consumes one prepaid adaptation credit."),
     };
   }
 

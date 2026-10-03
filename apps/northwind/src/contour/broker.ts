@@ -30,6 +30,7 @@ export function getBroker() {
     appUrl: contour.config.appUrl,
     readerTimeoutMs: 5000,
     maxReaderOutputBytes: 64_000,
+    billing: contour.config.billing,
   });
   return broker;
 }
