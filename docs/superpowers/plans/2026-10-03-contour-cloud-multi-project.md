@@ -266,7 +266,7 @@ revoke all on all tables in schema cloud from anon, authenticated;
 
 ### Task 5: Acme as project #1
 
-**Files:** `apps/ops-demo/src/server/contour.ts` (add `trustedClients`), `apps/ops-demo/src/app/.well-known/contour-project.json/route.ts`, `apps/ops-demo/src/app/settings/page.tsx` (add `<ConnectAgentPanel>`), plus env `CONTOUR_PROJECT_ID` and `CONTOUR_PROJECT_NONCE`.
+**Files:** `packages/contour-sdk/src/react/ConnectAgentPanel.tsx` (create; exported from `@contour/sdk/react`; props `{ cloudUrl: string; projectId: string; projectName: string; className?: string }`; renders a host-styled card with explanation + "Connect your AI agent" link to `${cloudUrl}/link/start?project=${projectId}`; uses host CSS variables, no own palette; design skills apply), `apps/ops-demo/src/server/contour.ts` (add `trustedClients`), `apps/ops-demo/src/app/.well-known/contour-project.json/route.ts`, `apps/ops-demo/src/app/settings/page.tsx` (add `<ConnectAgentPanel>`), plus env `CONTOUR_PROJECT_ID` and `CONTOUR_PROJECT_NONCE`.
 
 - [ ] **Step 1:** Create the Vercel alias `contour-acme.vercel.app` for ops-demo. Set `APP_URL=https://contour-acme.vercel.app`. Re-point the Stripe webhook with `node scripts/stripe-webhook-setup.mjs https://contour-acme.vercel.app/api/stripe/webhook` and update `STRIPE_WEBHOOK_SECRET`.
 - [ ] **Step 2:** Create the Vercel project `contour-cloud` (root `apps/cloud`) and move the alias `contour-sdk.vercel.app` from ops-demo to it. Set Cloud env: Supabase, `APP_URL`, vault keys, CSRF secret.
