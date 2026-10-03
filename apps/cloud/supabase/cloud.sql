@@ -28,6 +28,32 @@ alter table cloud.projects add column if not exists revocation_endpoint text;
 alter table cloud.projects add column if not exists registration_endpoint text;
 alter table cloud.projects add column if not exists dcr_client_id text;
 
+-- Serialize registrations for each owner so concurrent requests cannot exceed
+-- five projects. Count every status, and also guard owner reassignment.
+create index if not exists projects_owner_id_idx on cloud.projects(owner_id);
+create or replace function cloud.enforce_project_owner_limit()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if tg_op = 'UPDATE' and new.owner_id = old.owner_id then
+    return new;
+  end if;
+  -- A transaction-scoped advisory lock avoids granting access to auth.users.
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('cloud.projects:' || new.owner_id::text, 0));
+  if (select count(*) from cloud.projects where owner_id = new.owner_id) >= 5 then
+    raise exception using errcode = '23514', message = 'PROJECT_LIMIT_REACHED';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists projects_owner_limit on cloud.projects;
+create trigger projects_owner_limit
+before insert or update of owner_id on cloud.projects
+for each row execute function cloud.enforce_project_owner_limit();
+
 create table if not exists cloud.links (
   contour_user uuid not null references auth.users(id) on delete cascade,
   project_id uuid not null references cloud.projects(id) on delete cascade,
@@ -128,6 +154,7 @@ $$;
 revoke all on all functions in schema cloud from public, anon, authenticated;
 grant execute on function cloud.consume_link_state(text, uuid) to service_role;
 grant execute on function cloud.consume_session_link_state(text, uuid, text) to service_role;
+grant execute on function cloud.enforce_project_owner_limit() to service_role;
 
 notify pgrst, 'reload schema';
 commit;

@@ -3,6 +3,7 @@ import { lookup } from "node:dns/promises";
 import { request as httpsRequest } from "node:https";
 import { request as httpRequest, type ClientRequest } from "node:http";
 import { isIP } from "node:net";
+import { allowLocalProjects } from "./env";
 
 export type FetchJson = (url: string, init: { method?: "GET" | "POST"; headers?: Record<string, string>; body?: string; maxBytes: number; timeoutMs: number }) => Promise<{ status: number; json: unknown; headers: Headers }>;
 
@@ -41,7 +42,7 @@ function isPublicAddress(address: string, family: number): boolean {
 export const pinnedFetchJson: FetchJson = async (input, init) => {
   let url: URL;
   try { url = new URL(input); } catch { throw new Error("Invalid project URL"); }
-  const local = process.env.CLOUD_ALLOW_LOCAL_PROJECTS === "1" && url.protocol === "http:" && url.hostname === "localhost";
+  const local = allowLocalProjects() && url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
   if ((!local && url.protocol !== "https:") || url.username || url.password || input.includes("#") ||
     !Number.isSafeInteger(init.maxBytes) || init.maxBytes <= 0 || !Number.isSafeInteger(init.timeoutMs) || init.timeoutMs <= 0) {
     throw new Error("Invalid project request");

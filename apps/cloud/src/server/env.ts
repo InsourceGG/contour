@@ -14,3 +14,12 @@ export const env = {
   get csrfSecret() { return required("CONTOUR_CSRF_SECRET"); },
   get mcpResource() { return `${this.appUrl}/api/mcp`; },
 };
+
+/** Loopback projects are an explicit opt-in for a local, non-production hub. */
+export function allowLocalProjects(): boolean {
+  if (process.env.CLOUD_ALLOW_LOCAL_PROJECTS !== "1" || process.env.NODE_ENV === "production") return false;
+  try {
+    const hostname = new URL(env.appUrl).hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch { return false; }
+}

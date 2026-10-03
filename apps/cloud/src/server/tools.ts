@@ -4,6 +4,7 @@ import type { CloudDb } from './db';
 import { forwardTool, type ProjectRecord } from './forward';
 import { listLinks } from './links';
 import type { FetchJson } from './pinned-fetch';
+import { rateLimit } from './rate-limit';
 
 export type ToolDef = {
   name: string;
@@ -108,6 +109,7 @@ export function cloudTools(deps: {
     if (!link) throw new ToolError('NOT_FOUND', 'Project not found');
     const project = await verifiedProject(id as string);
     if (link.status !== 'active') throw new ToolError('LINK_REQUIRED', 'Call connect_project to reconnect this project');
+    rateLimit(`${ctx.contourUser}:${project.id}`, 'project');
     const clientId = deps.clientIdFor ? await deps.clientIdFor(project) : deps.clientId;
     const { result, isError } = await forwardTool({ ...deps, clientId }, {
       contourUser: ctx.contourUser, project, tool: name, args: projectArgs,

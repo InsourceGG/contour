@@ -130,12 +130,14 @@ describe("pinnedFetchJson", () => {
   });
   it("allows only explicitly enabled literal http localhost with a fixed loopback pin", async () => {
     vi.stubEnv("CLOUD_ALLOW_LOCAL_PROJECTS", "1");
+    vi.stubEnv("APP_URL", "http://localhost:3100");
+    vi.stubEnv("NODE_ENV", "test");
     expect((await pinnedFetchJson("http://localhost:3000/doc", init)).status).toBe(200);
     expect(mocks.lookup).not.toHaveBeenCalled();
     const callback = vi.fn();
     mocks.http.mock.calls[0][1].lookup("localhost", {}, callback);
     expect(callback).toHaveBeenCalledWith(null, "127.0.0.1", 4);
-    await expect(pinnedFetchJson("http://127.0.0.1:3000/doc", init)).rejects.toThrow();
+    await expect(pinnedFetchJson("http://127.0.0.1:3000/doc", init)).resolves.toMatchObject({ status: 200 });
     await expect(pinnedFetchJson("http://localhost.evil.example/doc", init)).rejects.toThrow();
     await expect(pinnedFetchJson("https://localhost:3000/doc", init)).resolves.toMatchObject({ status: 200 });
     // HTTPS gets the standard public-address validation even with local HTTP
@@ -143,6 +145,17 @@ describe("pinnedFetchJson", () => {
     expect(mocks.lookup).toHaveBeenCalledTimes(1);
     mocks.lookup.mockResolvedValue([{ address: "127.0.0.1", family: 4 }]);
     await expect(pinnedFetchJson("https://localhost:3000/doc", init)).rejects.toThrow();
+  });
+  it.each([
+    ["production", "http://localhost:3100"], ["test", "https://cloud.example"],
+  ])("rejects loopback requests in %s with Cloud URL %s", async (mode, appUrl) => {
+    vi.stubEnv("CLOUD_ALLOW_LOCAL_PROJECTS", "1");
+    vi.stubEnv("NODE_ENV", mode);
+    vi.stubEnv("APP_URL", appUrl);
+    for (const host of ["localhost", "127.0.0.1"]) {
+      await expect(pinnedFetchJson(`http://${host}:3000/doc`, init)).rejects.toThrow("Invalid project request");
+    }
+    expect(mocks.http).not.toHaveBeenCalled();
   });
   it("suppresses transport error details", async () => {
     mocks.lookup.mockRejectedValue(new Error("Bearer secret"));

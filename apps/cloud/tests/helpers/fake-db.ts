@@ -1,4 +1,5 @@
 import type { CloudDb } from '../../src/server/db.js';
+import { randomUUID } from 'node:crypto';
 type Row = Record<string, any>;
 type Result = { data: any; error: { message: string } | null };
 export type FakeCloudDb = CloudDb & { tables: Map<string, Row[]> };
@@ -47,7 +48,7 @@ export function createFakeDb(seed: Record<string, Row[]> = {}): FakeCloudDb {
                 selected = payload.map(value => {
                   const existing = operation === 'upsert' && conflict.length ? source.find(row => conflict.every(key => row[key] === value[key])) : undefined;
                   if (existing) { Object.assign(existing, structuredClone(value)); return existing; }
-                  const row = { created_at: now, updated_at: now, ...structuredClone(value) };
+                  const row = { ...(table === 'projects' ? { id: randomUUID() } : {}), created_at: now, updated_at: now, ...structuredClone(value) };
                   source.push(row); return row;
                 });
               } else if (operation === 'update') {

@@ -3,13 +3,21 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import type { CloudDb } from "./db";
 import { verifyProject, VerifyError } from "./verify";
+import { allowLocalProjects } from "./env";
+export class ProjectLimitError extends Error {
+  constructor() { super("You can register up to 5 projects."); }
+}
 export type RegistryProject = { id: string; owner_id: string; name: string; company: string; description: string; base_url: string; surfaces: string[]; verify_nonce: string; status: "pending" | "verified" | "disabled"; verified_at: string | null };
 const fields = z.object({ name: z.string().trim().min(1).max(100), company: z.string().trim().min(1).max(100), description: z.string().trim().max(1000), base_url: z.url().max(2048), surfaces: z.array(z.string().regex(/^[a-zA-Z0-9._-]{1,64}$/)).min(1).max(30) });
 export async function createProject(db: CloudDb, ownerId: string, input: unknown) {
   const p = fields.parse(input), url = new URL(p.base_url);
-  const local = process.env.CLOUD_ALLOW_LOCAL_PROJECTS === "1" && url.protocol === "http:" && url.hostname === "localhost";
+  const local = allowLocalProjects() && url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
   if ((!local && url.protocol !== "https:") || url.username || url.password || url.search || url.hash) throw new Error("Invalid project URL");
+  const owned = await db.from("projects").select("id").eq("owner_id", ownerId).limit(5);
+  if (owned.error || !owned.data) throw new Error("Unable to load owned projects");
+  if (owned.data.length >= 5) throw new ProjectLimitError();
   const { data, error } = await db.from("projects").insert({ ...p, base_url: url.href.replace(/\/$/, ""), owner_id: ownerId, verify_nonce: randomBytes(32).toString("base64url") }).select("id").single();
+  if (error?.code === "23514" && error?.message === "PROJECT_LIMIT_REACHED") throw new ProjectLimitError();
   if (error || !data) throw new Error("Unable to create project");
   return data.id as string;
 }

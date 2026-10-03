@@ -17,9 +17,9 @@ export default async function LinkStart({ searchParams }: { searchParams: Promis
   const project = await linkProject(cloudDb(), projectId);
   if (!project) return <section className="narrow panel"><h1>Project unavailable</h1><p className="muted">This project is not ready for linking. Return to Projects to choose an available company.</p><Link className="button" href="/projects">Return to Projects</Link></section>;
   return <section className="narrow panel link-confirmation">
-    <div className="page-intro"><h1>Link {project.name} ({project.company}) to your Contour account?</h1><p className="muted">You are signed in as <strong>{user.email}</strong>.</p></div>
+    <div className="page-intro"><h1>Link {project.name} ({project.company}) to your Contour account?</h1><p className="muted small">Names provided by the project owner.</p><p className="muted">You are signed in as <strong>{user.email}</strong>.</p></div>
     {project.description && <p>{project.description}</p>}
-    <div className="notice"><p>You will sign in at {project.company} to choose what your AI agent can access.</p><p>Your agent can describe, read and propose views. You approve each change in the company’s app.</p></div>
+    <div className="notice"><p>You will sign in at <strong>{new URL(project.baseUrl).host}</strong> to choose what your AI agent can access.</p><p>Your agent can describe, read and propose views. You approve each change in the company’s app.</p></div>
     <form action="/link/start" method="post">
       <input type="hidden" name="project" value={project.id} />
       <input type="hidden" name="csrf_token" value={contour.oauth.csrfTokenFor(user)} />

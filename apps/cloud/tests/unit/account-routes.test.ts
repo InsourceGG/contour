@@ -155,12 +155,29 @@ describe("owner project registry security", () => {
     const select = vi.fn(() => ({ single }));
     const insert = vi.fn<(values: Record<string, unknown>) => { select: typeof select }>(() => ({ select }));
     const db = { from: vi.fn(() => ({ insert })), rpc: vi.fn() };
+    db.from.mockReturnValueOnce({ select: () => ({ eq: () => ({ limit: async () => ({ data: [], error: null }) }) }) } as never);
     expect(await createProject(db, owner, { ...input, owner_id: other, verify_nonce: "attacker-nonce" })).toBe(projectId);
     const saved = insert.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(saved.owner_id).toBe(owner);
     expect(saved.verify_nonce).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(saved.verify_nonce).not.toBe("attacker-nonce");
     expect(saved.base_url).toBe(input.base_url);
+  });
+
+  it("caps each owner's projects at five including pending and disabled entries", async () => {
+    const db = createFakeDb({ projects: Array.from({ length: 5 }, (_, i) => ({ id: `project-${i}`, owner_id: owner,
+      status: ["pending", "verified", "disabled"][i % 3] })) });
+    await expect(createProject(db, owner, input)).rejects.toThrow("You can register up to 5 projects.");
+    expect(db.tables.get("projects")).toHaveLength(5);
+  });
+
+  it.each([
+    ["production", "http://localhost:3100"], ["test", origin],
+  ])("rejects local registration in %s with Cloud URL %s", async (mode, appUrl) => {
+    vi.stubEnv("CLOUD_ALLOW_LOCAL_PROJECTS", "1");
+    vi.stubEnv("NODE_ENV", mode);
+    vi.stubEnv("APP_URL", appUrl);
+    await expect(createProject(createFakeDb(), owner, { ...input, base_url: "http://localhost:3000" })).rejects.toThrow("Invalid project URL");
   });
 
   it("requires owner ownership on the read and write verification queries", async () => {

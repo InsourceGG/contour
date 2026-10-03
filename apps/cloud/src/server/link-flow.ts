@@ -9,18 +9,18 @@ import { pinnedFetchJson, type FetchJson } from './pinned-fetch';
 export class LinkFlowError extends Error {
   constructor(public code: string, message: string) { super(message); this.name = 'LinkFlowError'; }
 }
-export type LinkProject = ProjectRecord & { authorizationEndpoint: string; description: string };
+export type LinkProject = ProjectRecord & { authorizationEndpoint: string; description: string; baseUrl: string };
 type Deps = { db: CloudDb; appUrl: string; fetchJson?: FetchJson; clientIdFor?: (project: ProjectRecord) => Promise<string> };
 export const PROJECT_SCOPES = ['view:read', 'data:read', 'view:propose'] as const;
 
 export async function linkProject(db: CloudDb, id: string): Promise<LinkProject | null> {
   if (!z.uuid().safeParse(id).success) return null;
   const { data, error } = await db.from('projects')
-    .select('id,name,company,description,mcp_resource,as_issuer,token_endpoint,authorization_endpoint,revocation_endpoint,registration_endpoint,dcr_client_id')
+    .select('id,name,company,description,base_url,mcp_resource,as_issuer,token_endpoint,authorization_endpoint,revocation_endpoint,registration_endpoint,dcr_client_id')
     .eq('id', id).eq('status', 'verified').maybeSingle();
   if (error) throw new LinkFlowError('PROJECT_UNAVAILABLE', 'Unable to load this project. Try again later.');
   if (!data) return null;
-  return { id: data.id, name: data.name, company: data.company, description: data.description,
+  return { id: data.id, name: data.name, company: data.company, description: data.description, baseUrl: data.base_url,
     mcpResource: data.mcp_resource, asIssuer: data.as_issuer, tokenEndpoint: data.token_endpoint,
     authorizationEndpoint: data.authorization_endpoint, revocationEndpoint: data.revocation_endpoint,
     registrationEndpoint: data.registration_endpoint, dcrClientId: data.dcr_client_id };

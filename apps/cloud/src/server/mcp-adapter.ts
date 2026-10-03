@@ -31,10 +31,34 @@ export const CLOUD_MCP_INSTRUCTIONS =
 const COMPANY_ARGS = Symbol("company tool arguments");
 type HubArguments = { surfaceId: string } & Record<string, unknown> & { [COMPANY_ARGS]: Record<string, unknown> };
 
+const CLOUD_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  INVALID_INPUT: "Invalid tool input.",
+  NOT_FOUND: "Project not found.",
+  LINK_REQUIRED: "Call connect_project to reconnect this project.",
+  PROJECT_UNAVAILABLE: "The project is temporarily unavailable. Try again later.",
+  PROJECT_ACCESS_REVOKED: "Reconnect the project to restore access.",
+  AGENT_ACCESS_DISABLED: "Agent access is disabled for this project.",
+  RATE_LIMITED: "Too many attempts. Wait a minute and try again.",
+  PAYMENT_REQUIRED: "This project needs credits before it can propose a view.",
+  STALE_REVISION: "The project view changed. Read the current view and try again.",
+  EXPIRED_PROPOSAL: "This project proposal expired. Propose a new view.",
+  INCOMPATIBLE_MANIFEST: "The project surface changed. Describe it again before proposing a view.",
+  INCOMPATIBLE_SNAPSHOT: "The project view is no longer compatible with this surface.",
+  INVALID_CONFIG: "The project could not use this view configuration.",
+  PROPOSAL_NOT_READY: "The project proposal is not ready. Check it again later.",
+  HASH_MISMATCH: "The project could not verify this proposal. Propose a new view.",
+  IDEMPOTENCY_CONFLICT: "This request ID was already used for a different project request. Use a new request ID.",
+  FORBIDDEN: "The project did not allow this operation.",
+  UNAUTHENTICATED: "Sign in to the project again to restore access.",
+  INVALID_SCOPE: "This connection does not have the required project permissions.",
+  INTERNAL: "The project could not complete this request. Try again later.",
+};
+
 function codedError(code: string, message: string): ContourError {
   // The SDK currently types codes as its broker's finite vocabulary, but its
   // wire error serializer supports Cloud's stable codes without modification.
-  return new ContourError(code as ConstructorParameters<typeof ContourError>[0], message);
+  const fixed = Object.hasOwn(CLOUD_ERROR_MESSAGES, code) ? CLOUD_ERROR_MESSAGES[code] : undefined;
+  return new ContourError(code as ConstructorParameters<typeof ContourError>[0], fixed ?? `Project message: ${message.slice(0, 160)}`);
 }
 
 function upstreamError(result: unknown): { code: string; message: string } | null {
@@ -65,7 +89,6 @@ export function adaptCloudTools(tools: readonly CloudToolDef[]): McpToolSet {
         try {
           const companyArgs = (parsed as HubArguments)[COMPANY_ARGS];
           rateLimit(ctx.subjectId, "mcp");
-          if (typeof companyArgs.projectId === "string") rateLimit(`${ctx.subjectId}:${companyArgs.projectId}`, "project");
           const result = await tool.handler({ contourUser: ctx.subjectId }, companyArgs);
           const error = upstreamError(result);
           if (error) throw codedError(error.code, error.message);
