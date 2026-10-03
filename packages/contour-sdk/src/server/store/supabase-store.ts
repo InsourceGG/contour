@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ContourStore, DecisionEvent, HistoryEntry, Membership, Owner, RpcResult, StoredView } from "../../core/broker";
 import { ContourError, type ManualPin, type Proposal, type UserPreferences } from "../../core/types";
@@ -248,6 +249,68 @@ export function supabaseStore(opts: SupabaseStoreOptions): ContourStore {
       const { data, error } = await ownerFilter(db().from("proposals").select(PROPOSAL_COLS), owner).eq("id", id).maybeSingle();
       if (error) fail("getProposal", error);
       return data ? toProposal(data as ProposalRow) : null;
+    },
+
+    async createJob(owner, input) {
+      const id = randomUUID();
+      try {
+        const { error } = await db().from("contour_jobs").insert({
+          id,
+          tenant_id: owner.tenantId,
+          app_id: owner.appId,
+          subject_id: owner.subjectId,
+          surface_id: owner.surfaceId,
+          client_id: input.clientId,
+          status: "working",
+          task: input.task,
+          expertise: input.expertise,
+        });
+        if (error) console.error("[contour] createJob failed");
+      } catch {
+        console.error("[contour] createJob failed");
+      }
+      return id;
+    },
+
+    async updateJob(owner, id, patch) {
+      try {
+        const { error } = await ownerFilter(db().from("contour_jobs").update({
+          ...(patch.status !== undefined ? { status: patch.status } : {}),
+          ...(patch.proposalId !== undefined ? { proposal_id: patch.proposalId } : {}),
+          ...(patch.changedComponents !== undefined ? { changed_components: patch.changedComponents } : {}),
+          ...(patch.message !== undefined ? { message: patch.message } : {}),
+          updated_at: new Date().toISOString(),
+        }), owner).eq("id", id);
+        if (error) console.error("[contour] updateJob failed");
+      } catch {
+        console.error("[contour] updateJob failed");
+      }
+    },
+
+    async getLatestJob(owner, sinceMs) {
+      try {
+        const { data, error } = await ownerFilter(db().from("contour_jobs")
+          .select("id,status,task,expertise,proposal_id,changed_components,message,started_at,updated_at"), owner)
+          .gte("started_at", new Date(Math.max(sinceMs, Date.now() - 10 * 60 * 1000)).toISOString())
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw new Error("Live job read failed");
+        return data ? {
+          id: data.id,
+          status: data.status,
+          task: data.task,
+          expertise: data.expertise,
+          proposalId: data.proposal_id,
+          changedComponents: data.changed_components ?? [],
+          message: data.message,
+          startedAt: data.started_at,
+          updatedAt: data.updated_at,
+        } : null;
+      } catch {
+        console.error("[contour] getLatestJob failed");
+        throw new ContourError("INTERNAL", "Live view progress is temporarily unavailable");
+      }
     },
 
     async findProposalByRequest(owner, requestId) {

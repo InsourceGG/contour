@@ -8,7 +8,10 @@ import { setting, type HostComponentProps } from "./types";
 
 /** Revenue trend: summary, annotated (plain-language callouts) and dense (daily values) variants. */
 export function Revenue({ placement, data, density, preview }: HostComponentProps<RevenueSummary>) {
-  const period = setting(placement.settings, "period", ["7d", "30d"] as const, "30d");
+  const requestedPeriod = setting(placement.settings, "period", ["7d", "30d"] as const, "30d");
+  // Inline proposals reuse the dashboard's authorized reader output. Label
+  // its actual window until Accept refreshes data for the proposed settings.
+  const period = data?.period ?? requestedPeriod;
   const showLegend = setting(placement.settings, "showLegend", [true, false] as const, true);
   const periodLabel = period === "7d" ? "Last 7 days" : "Last 30 days";
 
@@ -20,12 +23,10 @@ export function Revenue({ placement, data, density, preview }: HostComponentProp
     );
   }
 
-  // Respect the configured period even if the reader returned a longer window.
-  const points = period === "7d" && data.points.length > 7 ? data.points.slice(-7) : data.points;
-  const sliced = points !== data.points;
-  const total = sliced ? points.reduce((a, p) => a + p.net, 0) : data.total;
-  const lo = sliced ? points.reduce((m, p) => (p.net < m.net ? p : m), points[0]) : data.min;
-  const hi = sliced ? points.reduce((m, p) => (p.net > m.net ? p : m), points[0]) : data.max;
+  const points = data.points;
+  const total = data.total;
+  const lo = data.min;
+  const hi = data.max;
   const inRange = new Set(points.map((p) => p.date));
   const annotations = data.annotations.filter((a) => inRange.has(a.date));
   const change = data.changePct;
@@ -65,7 +66,7 @@ export function Revenue({ placement, data, density, preview }: HostComponentProp
   );
 
   return (
-    <HostCard placement={placement} title="Net revenue" subtitle={`${periodLabel}, ${data.currency}`}>
+    <HostCard placement={placement} title="Net revenue" subtitle={`${periodLabel}, ${data.currency}${preview && requestedPeriod !== period ? ", current data until accepted" : ""}`}>
       {variant !== "dense" && headline}
 
       {variant === "dense" ? (

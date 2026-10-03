@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AdaptiveBroker } from "../src/core/broker";
 import { ContourError } from "../src/core/types";
@@ -123,6 +123,28 @@ describe("defineContourServer", () => {
 
 describe("createContourHandlers", () => {
   const broker = {} as AdaptiveBroker;
+
+  it("serves authenticated host live progress with no-store", async () => {
+    const getLive = vi.fn(async () => ({ revision: 2, configHash: "fixture-hash", job: null, proposal: null }));
+    const h = createContourHandlers(defineContourServer(config()), { broker: { getLive } as unknown as AdaptiveBroker });
+    const response = await h["GET /api/host/live"](new Request("https://app.example.test/api/host/live"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(await response.json()).toMatchObject({ revision: 2, job: null, proposal: null });
+    expect(getLive).toHaveBeenCalledWith(expect.objectContaining({ subjectId: USER.subjectId, channel: "host" }));
+  });
+
+  it("does not cache live errors and rejects a signed-out host", async () => {
+    const getLive = vi.fn(async () => { throw new ContourError("RATE_LIMITED", "Retry shortly"); });
+    const h = createContourHandlers(defineContourServer(config()), { broker: { getLive } as unknown as AdaptiveBroker });
+    const response = await h["GET /api/host/live"](new Request("https://app.example.test/api/host/live"));
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    const signedOut = createContourHandlers(defineContourServer(config({ identity: { ...config().identity, currentUser: async () => null } })), { broker });
+    const denied = await signedOut["GET /api/host/live"](new Request("https://app.example.test/api/host/live"));
+    expect(denied.status).toBe(401);
+    expect(denied.headers.get("Cache-Control")).toBe("no-store");
+  });
 
   it("serves RFC 9728 / RFC 8414 metadata at the root and the /api/mcp suffix only", async () => {
     const h = createContourHandlers(defineContourServer(config()), { broker });

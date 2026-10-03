@@ -57,6 +57,7 @@ export async function ctxFor(
 /** Removes all Contour state for a subject (test isolation). */
 export async function resetSubject(subjectId: string) {
   const db = admin();
+  await db.from("contour_jobs").delete().eq("subject_id", subjectId);
   await db.from("approvals").delete().eq("subject_id", subjectId);
   await db.from("credit_ledger").delete().eq("subject_id", subjectId);
   await db.from("credits").delete().eq("subject_id", subjectId);

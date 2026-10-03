@@ -25,7 +25,7 @@ const SCOPE_COPY: Record<Scope, { title: string; detail: string }> = {
   "view:propose": {
     title: "Propose a layout for your review",
     detail:
-      "A proposal never changes your screen. You open a preview in Contour and choose Accept or Keep current. Each ready proposal uses one prepaid adaptation credit.",
+      "A proposal can appear as a preview in your dashboard. You choose Accept or Keep current, and only Accept saves it. Each ready proposal uses one prepaid adaptation credit.",
   },
   "view:commit": { title: "", detail: "" }, // never offered to agents
 };

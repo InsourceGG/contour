@@ -69,7 +69,8 @@ export function Tasks({ placement, data, preview }: HostComponentProps<TaskList>
           type="text"
           maxLength={500}
           value={draft}
-          disabled={preview}
+          // This draft is local component state, so editing it in a preview
+          // never changes company data or accepts the proposed layout.
           placeholder="What should the next person know?"
           onChange={(e) => setDraft(e.target.value)}
           data-testid="task-draft-note"

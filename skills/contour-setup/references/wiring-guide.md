@@ -166,6 +166,43 @@ The host `preview-actions.tsx` posts Accept to `/api/host/proposals/:id/apply` w
 
 Use `ConnectAgentPanel` from `@contour/sdk/react` in the existing settings section with `cloudUrl` and `projectId`. Confirm its installed props; if the export is absent, report the exact SDK gap rather than creating a lookalike export. With registration skipped, show a disabled connection state and missing configuration names. Reuse host classes and tokens, including consent/preview styling, without a new framework.
 
+## Live proposals
+
+Poll the authenticated `GET /api/host/live` route from the dashboard and pass its result to `LiveSurface`. In a catch-all installation, use the corresponding mounted route, such as `/api/contour/api/host/live`. The SDK route requires a host session and `view:read`, returns `Cache-Control: no-store`, and limits each user to 150 requests per minute.
+
+```tsx
+import { LiveSurface, useContourLive } from "@contour/sdk/react";
+import type { PreviewData } from "@contour/sdk/core";
+
+// Inside the host's existing client boundary, with its session CSRF token:
+const live = useContourLive({ endpoint: "/api/host/live", intervalMs: 1200 });
+const approvalKeys = useRef(new Map<string, string>());
+
+async function decide(preview: PreviewData, action: "apply" | "reject") {
+  const id = preview.proposal.id;
+  const key = approvalKeys.current.get(id) ?? crypto.randomUUID();
+  approvalKeys.current.set(id, key);
+  const response = await fetch(`/api/host/proposals/${encodeURIComponent(id)}/${action}`, {
+    method: "POST", credentials: "same-origin", cache: "no-store",
+    headers: { "content-type": "application/json", "x-contour-csrf": csrf },
+    body: JSON.stringify(action === "apply"
+      ? { configHash: preview.proposal.configHash, idempotencyKey: key } : {}),
+  });
+  const result = await response.json();
+  if (!response.ok) throw result.error; // Keep distinct stale, expired and invalid errors.
+  router.refresh(); // Fetch the saved snapshot after a successful decision.
+}
+
+<LiveSurface manifest={manifest} config={snapshot.config} data={data}
+  componentMap={componentMap} live={live}
+  onAccept={(preview) => decide(preview, "apply")}
+  onKeep={(preview) => decide(preview, "reject")} />
+```
+
+Import `useRef` from React and `useRouter` from `next/navigation` in this client boundary; obtain `csrf` through the host's existing session token provider. Adjust proposal paths to the mount just as for the polling endpoint. Set `comparisonHref` when the host's full comparison page differs from `/preview/:id`.
+
+Working proposals show a polite status and token-based skeletons over adaptable panels. READY proposals render inline with changed-panel badges, Accept, Keep current, and full comparison. When an editable field has focus, the saved layout stays in place until blur or Review. Drafts and filters should use stable component identity and the existing `ComponentStateProvider`. Remove older revision polling so it cannot race this hook. Polling pauses in hidden tabs and backs off on errors; all motion respects reduced-motion preferences. A proposal never saves itself, and agent credentials can never call the host commit route.
+
 ## Environment
 
 | Name | Purpose | Exposure |

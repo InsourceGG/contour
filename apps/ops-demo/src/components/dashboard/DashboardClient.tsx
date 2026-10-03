@@ -5,15 +5,17 @@ import { useRouter } from "next/navigation";
 import type { SurfaceData } from "@/host/readers/types";
 import { overviewManifest } from "@/host/manifest";
 import { componentLabels, componentMap } from "@/host/components";
-import { AdaptiveSurface } from "@contour/sdk/react";
-import type { ManualPin, Placement, ProposalStatus, UserPreferences, ViewSnapshot } from "@contour/sdk/core";
+import { LiveSurface, useContourLive } from "@contour/sdk/react";
+import type { ManualPin, Placement, PreviewData, ProposalStatus, UserPreferences, ViewSnapshot } from "@contour/sdk/core";
+import { apiPost, newKey } from "@/components/api";
+import { useCsrf } from "@/components/csrf";
 import { PlateLines } from "@/components/contour-art";
 import { IconAlert } from "@/components/icons";
 import { useToast } from "@/components/toast";
 import { AdaptPanel } from "./AdaptPanel";
 import { ControlDock } from "./ControlDock";
 import { PinButton } from "./PinButton";
-import { SafeBoundaryBar, useViewPoller } from "./SafeBoundary";
+import { SafeBoundaryBar, useLiveRevision } from "./SafeBoundary";
 import { ViewControls } from "./ViewControls";
 import { DENSITY_LABEL, templateLabel } from "./labels";
 
@@ -41,12 +43,39 @@ type Props = {
 
 export function DashboardClient({ tenant, snapshot, data, prefs, credits, proposals, appliedRevision }: Props) {
   const router = useRouter();
-  const { announce } = useToast();
+  const { announce, notify } = useToast();
+  const csrf = useCsrf();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [adaptOpen, setAdaptOpen] = useState(false);
   const [pins, setPins] = useState<ManualPin[]>(prefs.pins);
+  const [resolvedProposal, setResolvedProposal] = useState<{ id: string; outcome: "accepted" | "kept" } | null>(null);
   const adaptPanelId = useId();
-  const poller = useViewPoller(snapshot.revision);
+  const live = useContourLive({ endpoint: "/api/host/live" });
+  const poller = useLiveRevision(snapshot.revision, live.revision);
+  const acceptKeys = useRef(new Map<string, string>());
+
+  async function accept(proposal: PreviewData) {
+    const id = proposal.proposal.id;
+    const idempotencyKey = acceptKeys.current.get(id) ?? newKey();
+    acceptKeys.current.set(id, idempotencyKey);
+    const result = await apiPost<{ revision: number }>(
+      `/api/host/proposals/${encodeURIComponent(id)}/apply`,
+      { configHash: proposal.proposal.configHash, idempotencyKey },
+      csrf,
+    );
+    if (!result.ok) throw result.error;
+    setResolvedProposal({ id, outcome: "accepted" });
+    notify(`New view applied (revision ${result.data.revision}).`);
+    router.refresh();
+  }
+
+  async function keep(proposal: PreviewData) {
+    const result = await apiPost(`/api/host/proposals/${encodeURIComponent(proposal.proposal.id)}/reject`, {}, csrf);
+    if (!result.ok) throw result.error;
+    setResolvedProposal({ id: proposal.proposal.id, outcome: "kept" });
+    notify("Kept your current view.");
+    router.refresh();
+  }
 
   // After Accept: move focus to the surface heading and announce the new revision.
   useEffect(() => {
@@ -73,7 +102,17 @@ export function DashboardClient({ tenant, snapshot, data, prefs, credits, propos
     [lockedIds, prefs, pins],
   );
 
-  const readyCount = proposals.filter((p) => p.status === "READY").length;
+  const visibleProposals = proposals.filter((proposal) => proposal.id !== resolvedProposal?.id);
+  const pending = live.proposal?.proposal;
+  if (pending && pending.id !== resolvedProposal?.id) {
+    const previous = visibleProposals.findIndex((proposal) => proposal.id === pending.id);
+    if (previous >= 0) visibleProposals.splice(previous, 1);
+    visibleProposals.unshift({
+      id: pending.id, status: pending.status, task: pending.task, expertise: pending.expertise,
+      createdAt: pending.createdAt, expiresAt: pending.expiresAt, changeCount: live.proposal!.changes.length,
+    });
+  }
+  const readyCount = visibleProposals.filter((p) => p.status === "READY").length;
 
   return (
     <div className="space-y-6">
@@ -103,7 +142,7 @@ export function DashboardClient({ tenant, snapshot, data, prefs, credits, propos
         adaptOpen={adaptOpen}
         adaptPanelId={adaptPanelId}
         onToggleAdapt={() => setAdaptOpen((o) => !o)}
-        proposals={proposals}
+        proposals={visibleProposals}
         readyCount={readyCount}
         credits={credits}
       />
@@ -114,6 +153,7 @@ export function DashboardClient({ tenant, snapshot, data, prefs, credits, propos
           baseRevision={snapshot.revision}
           prefs={prefs}
           credits={credits}
+          resolvedProposal={resolvedProposal}
           onClose={() => setAdaptOpen(false)}
         />
       )}
@@ -136,7 +176,10 @@ export function DashboardClient({ tenant, snapshot, data, prefs, credits, propos
 
         <div className="plate" data-flash={appliedRevision !== null ? "true" : undefined}>
           <PlateLines />
-          <AdaptiveSurface
+          <LiveSurface
+            live={live}
+            onAccept={accept}
+            onKeep={keep}
             manifest={overviewManifest}
             config={snapshot.config}
             data={data}

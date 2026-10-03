@@ -10,3 +10,6 @@ export { SurfaceChromeContext, useSurfaceChrome } from "./surface-context";
 export { breakpointForWidth, regionBlocks, regionOrdersDiffer, sortedBreakpoints, surfaceCss, type RegionBlock } from "./layout";
 export { densityFromToken, type Density, type SurfaceChrome, type SurfaceComponentMap, type SurfaceComponentProps } from "./types";
 export { ConnectAgentPanel, type ConnectAgentPanelProps } from "./ConnectAgentPanel";
+export { LiveSurface, type LiveSurfaceProps } from "./LiveSurface";
+export { useContourLive, type UseContourLiveOptions, type UseContourLiveResult } from "./useContourLive";
+export type { ContourLiveError } from "./live-state";
