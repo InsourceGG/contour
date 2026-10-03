@@ -49,7 +49,7 @@ export async function resolveMcpContext(request: Request, surfaceId: string): Pr
 
   const member = await getActiveMembership(grant.subject_id, grant.tenant_id, grant.app_id);
   if (!member) throw invalid("The user no longer has access to this app");
-  if (!(await isAgentAccessEnabled(grant.app_id))) {
+  if (!(await isAgentAccessEnabled(grant.tenant_id, grant.app_id))) {
     throw new ContourError("AGENT_ACCESS_DISABLED", "The company has disabled agent access for this app");
   }
   if (!grant.surfaces.includes(surfaceId)) {

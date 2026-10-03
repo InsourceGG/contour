@@ -14,6 +14,8 @@ export type HostUser = {
   tenantId: string;
   role: string;
   roleVersion: number;
+  /** Supabase auth session ID (JWT `session_id`); binds CSRF tokens to this sign-in. */
+  sessionId: string;
 };
 
 /**
@@ -34,6 +36,11 @@ export async function resolveHostUser(): Promise<HostUser> {
     .eq("status", "active");
   if (mErr) throw new ContourError("INTERNAL", "Membership lookup failed");
   if (!rows || rows.length === 0) throw new ContourError("FORBIDDEN", "No active membership for this app");
+  // getUser() above verified this session's access token with the Auth server;
+  // its session_id claim scopes CSRF tokens to this sign-in.
+  const { data: sess } = await supa.auth.getSession();
+  const sessionId = sessionIdFrom(sess.session?.access_token);
+  if (!sessionId) throw new ContourError("UNAUTHENTICATED", "Sign in required");
   const requested = (await cookies()).get(TENANT_COOKIE)?.value;
   const m = rows.find((r) => r.tenant_id === requested) ?? rows[0];
   return {
@@ -43,11 +50,25 @@ export async function resolveHostUser(): Promise<HostUser> {
     tenantId: m.tenant_id,
     role: m.role,
     roleVersion: m.role_version,
+    sessionId,
   };
 }
 
+function sessionIdFrom(token: string | undefined): string | null {
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8")) as { session_id?: unknown };
+    return typeof payload.session_id === "string" && payload.session_id.length > 0 ? payload.session_id : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveHostContext(surfaceId: string = DEFAULT_SURFACE): Promise<VerifiedContext> {
-  const u = await resolveHostUser();
+  return contextFromUser(await resolveHostUser(), surfaceId);
+}
+
+export function contextFromUser(u: HostUser, surfaceId: string = DEFAULT_SURFACE): VerifiedContext {
   return {
     subjectId: u.subjectId,
     tenantId: u.tenantId,

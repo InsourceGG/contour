@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   try {
     const user = await resolveHostUser();
     if (user.role !== "operator") throw new ContourError("FORBIDDEN", "Operator role required");
-    assertCsrf(request, user.subjectId);
+    assertCsrf(request, user);
     const revoked = await revokeAllGrantsForApp(user.tenantId, APP_ID, user.subjectId);
     return NextResponse.json({ revoked, tenantId: user.tenantId, appId: APP_ID }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {

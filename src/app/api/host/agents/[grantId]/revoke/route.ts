@@ -10,7 +10,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/host/agents
   try {
     const { grantId } = await ctx.params;
     const user = await resolveHostUser();
-    assertCsrf(request, user.subjectId);
+    assertCsrf(request, user);
     const ok = await revokeGrant(user.subjectId, user.tenantId, grantId);
     if (!ok) throw new ContourError("NOT_FOUND", "Agent connection not found");
     return NextResponse.json({ revoked: true, grantId }, { headers: { "Cache-Control": "no-store" } });

@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { ContourError, type VerifiedContext } from "@/sdk/types";
-import { resolveHostContext } from "./context";
+import { contextFromUser, resolveHostUser } from "./context";
 import { assertCsrf } from "./csrf";
 import { errorResponse } from "./http";
 
@@ -13,8 +13,9 @@ export async function hostMutation(
   fn: (ctx: VerifiedContext, body: unknown) => Promise<unknown>,
 ) {
   try {
-    const ctx = await resolveHostContext();
-    assertCsrf(request, ctx.subjectId);
+    const user = await resolveHostUser();
+    assertCsrf(request, user);
+    const ctx = contextFromUser(user);
     const text = await request.text();
     if (text.length > MAX_BODY) throw new ContourError("INVALID_INPUT", "Request too large");
     let body: unknown = {};

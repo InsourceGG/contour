@@ -52,7 +52,7 @@ export function DashboardClient({ tenant, snapshot, data, prefs, credits, propos
   useEffect(() => {
     if (appliedRevision === null) return;
     headingRef.current?.focus();
-    announce(`New view applied — revision ${appliedRevision}`);
+    announce(`New view applied (revision ${appliedRevision})`);
     router.replace("/", { scroll: false });
   }, [appliedRevision, announce, router]);
 

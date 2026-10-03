@@ -33,12 +33,12 @@ function redirect303(location: string): Response {
 }
 
 /** Same-origin + session-bound token check (mirrors `assertCsrf`, token from the form body). */
-function checkFormCsrf(request: Request, subjectId: string, provided: string | null): boolean {
+function checkFormCsrf(request: Request, user: HostUser, provided: string | null): boolean {
   const origin = request.headers.get("origin");
   const expectedOrigin = new URL(env.appUrl).origin;
   const requestOrigin = new URL(request.url).origin;
   if (!origin || (origin !== expectedOrigin && origin !== requestOrigin)) return false;
-  return !!provided && safeEqual(provided, csrfTokenFor(subjectId));
+  return !!provided && safeEqual(provided, csrfTokenFor(user));
 }
 
 /** POST /oauth/authorize/decision: the user's Approve / Deny on the consent screen. */
@@ -65,7 +65,7 @@ export async function handleConsentDecision(request: Request): Promise<Response>
     return errorPage(500, "Could not verify your session.");
   }
 
-  if (!checkFormCsrf(request, user.subjectId, form.get("csrf"))) {
+  if (!checkFormCsrf(request, user, form.get("csrf"))) {
     return errorPage(403, "This approval request did not come from the Contour consent screen. Please start again from your agent.");
   }
 
@@ -83,7 +83,7 @@ export async function handleConsentDecision(request: Request): Promise<Response>
     );
   }
 
-  if (!(await isAgentAccessEnabled(APP_ID))) {
+  if (!(await isAgentAccessEnabled(user.tenantId, APP_ID))) {
     return redirect303(
       buildClientRedirect(req.redirectUri, {
         error: "access_denied",

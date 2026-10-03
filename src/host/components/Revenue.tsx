@@ -98,7 +98,7 @@ export function Revenue({ placement, data, density, preview }: HostComponentProp
                     <tr key={p.date}>
                       <th scope="row" className="font-normal">{formatDate(p.date)}</th>
                       <td className="num">{formatMoney(p.net, data.currency)}</td>
-                      <td className="num text-ink-2">{d === null ? "—" : `${d > 0 ? "+" : d < 0 ? "−" : ""}${formatMoney(Math.abs(d), data.currency)}`}</td>
+                      <td className="num text-ink-2">{d === null ? "n/a" : `${d > 0 ? "+" : d < 0 ? "−" : ""}${formatMoney(Math.abs(d), data.currency)}`}</td>
                     </tr>
                   );
                 })}

@@ -21,7 +21,7 @@ export type ViewPoller = { pendingRevision: number | null; applyNow: () => void 
 
 /**
  * Safe boundary for layout swaps: poll the saved revision; if it changed
- * (e.g. accepted in another tab) refresh — unless the user is typing, in
+ * (e.g. accepted in another tab) refresh, unless the user is typing, in
  * which case defer and offer "apply now".
  */
 export function useViewPoller(currentRevision: number): ViewPoller {

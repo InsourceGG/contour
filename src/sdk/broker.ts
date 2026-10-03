@@ -90,7 +90,7 @@ export type DecisionEvent = {
 
 export interface ContourStore {
   getMembership(subjectId: string, tenantId: string, appId: string): Promise<Membership | null>;
-  isAgentAccessEnabled(appId: string): Promise<boolean>;
+  isAgentAccessEnabled(tenantId: string, appId: string): Promise<boolean>;
   getActiveView(owner: Owner): Promise<StoredView | null>;
   getHistoryEntry(owner: Owner, revision: number): Promise<HistoryEntry | null>;
   listHistory(owner: Owner, limit: number): Promise<HistoryEntry[]>;
@@ -269,7 +269,7 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
   }
 
   async function requireAgentAccess(ctx: VerifiedContext) {
-    if (ctx.channel === "mcp" && !(await store.isAgentAccessEnabled(ctx.appId))) {
+    if (ctx.channel === "mcp" && !(await store.isAgentAccessEnabled(ctx.tenantId, ctx.appId))) {
       throw new ContourError("AGENT_ACCESS_DISABLED", "The company has disabled agent access for this app");
     }
   }
@@ -715,6 +715,10 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
           created.code === "IDEMPOTENCY_CONFLICT" ? "requestId reused with a different payload" : "Could not persist the proposal",
         );
       }
+      if (created.replayed) {
+        // A concurrent identical request already persisted (and paid for) this proposal.
+        await release();
+      }
       released = true; // credit consumed inside the proposal transaction
       const proposalId = String(created.proposalId);
       await store.recordDecision({
@@ -881,11 +885,12 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
     }
     const target = await store.getHistoryEntry(owner, active.parentRevision);
     if (!target) throw new ContourError("INCOMPATIBLE_SNAPSHOT", "The earlier view is outside the retained history");
-    const valid = validateViewConfig(manifest, target.config);
+    const prefs = await store.getPreferences(owner);
+    const valid = validateViewConfig(manifest, target.config, { pins: prefs.pins });
     if (!valid.ok || target.manifestVersion !== manifest.manifestVersion) {
       throw new ContourError(
         "INCOMPATIBLE_SNAPSHOT",
-        "Your previous layout is no longer compatible with the current screen or your access, so it cannot be restored. Reset to the default instead.",
+        "Your previous layout is no longer compatible with the current screen, your access, or your pins, so it cannot be restored. Unpin or reset to the default instead.",
         { issues: valid.ok ? [] : valid.issues },
       );
     }

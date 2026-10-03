@@ -49,7 +49,7 @@ export default async function ConsolePage() {
   const d = await getConsoleData();
   // Model costs are fractions of a cent; show enough precision to be honest.
   const money = (v: number | null) =>
-    v === null ? "—" : v > 0 && v < 0.01 ? `$${v.toFixed(6)}` : formatMoney(v, d.cost.currency.toUpperCase());
+    v === null ? "n/a" : v > 0 && v < 0.01 ? `$${v.toFixed(6)}` : formatMoney(v, d.cost.currency.toUpperCase());
 
   return (
     <AppShell user={user}>
@@ -170,14 +170,14 @@ export default async function ConsolePage() {
                       <td>{expertiseLabel(r.expertise)}</td>
                       {r.suppressed ? (
                         <td colSpan={4} className="text-ink-3">
-                          Suppressed — below minimum cohort ({d.minCohort} people)
+                          Hidden: fewer than {d.minCohort} people
                         </td>
                       ) : (
                         <>
                           <td className="num">{r.users}</td>
                           <td className="num">{r.proposals}</td>
                           <td className="num">{r.applied}</td>
-                          <td>{r.topCandidate ?? "—"}</td>
+                          <td>{r.topCandidate ?? "n/a"}</td>
                         </>
                       )}
                     </tr>
@@ -254,7 +254,7 @@ export default async function ConsolePage() {
                     <tr key={`${a.createdAt}-${i}`}>
                       <td className="whitespace-nowrap">{formatDateTime(a.createdAt)}</td>
                       <td>{a.kind.replace(/_/g, " ")}</td>
-                      <td className="text-ink-2">{a.ref ? <span title={a.ref}>{a.ref.length > 24 ? `${a.ref.slice(0, 24)}…` : a.ref}</span> : "—"}</td>
+                      <td className="text-ink-2">{a.ref ? <span title={a.ref}>{a.ref.length > 24 ? `${a.ref.slice(0, 24)}…` : a.ref}</span> : "n/a"}</td>
                     </tr>
                   ))}
                 </tbody>

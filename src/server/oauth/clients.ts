@@ -1,9 +1,11 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
+import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 import { adminClient } from "../supabase";
 import { OAuthError } from "./errors";
+import { allowRequest } from "./ratelimit";
 import { MAX_REDIRECT_URI_LENGTH, validateRedirectUri } from "./redirect";
 
 export type OAuthClient = {
@@ -200,16 +202,71 @@ function isPrivateAddress(addr: string, family: number): boolean {
   );
 }
 
-async function assertPublicHost(hostname: string) {
+/** One generic outward error for every CIMD fetch failure (no network side channel). */
+const CIMD_UNAVAILABLE = "Client metadata document could not be retrieved or is invalid";
+
+function cimdFail(detail: string): never {
+  console.warn("[contour] CIMD rejected:", detail);
+  throw new OAuthError("invalid_client", CIMD_UNAVAILABLE);
+}
+
+/** Resolves once and returns the validated public address to pin the connection to. */
+async function resolvePublicHost(hostname: string): Promise<{ address: string; family: number }> {
   let addrs: { address: string; family: number }[];
   try {
     addrs = await lookup(hostname, { all: true, verbatim: true });
   } catch {
-    throw new OAuthError("invalid_client", "client_id host could not be resolved");
+    cimdFail("host could not be resolved");
   }
   if (addrs.length === 0 || addrs.some((a) => isPrivateAddress(a.address, a.family))) {
-    throw new OAuthError("invalid_client", "client_id host resolves to a non-public address");
+    cimdFail("host resolves to a non-public address");
   }
+  return addrs[0];
+}
+
+/**
+ * HTTPS GET pinned to the pre-validated address (closes the DNS-rebinding
+ * gap between the check and the connection). TLS still verifies the real
+ * host name via SNI/servername. No redirects are followed.
+ */
+function pinnedGet(url: URL, pinned: { address: string; family: number }): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const req = httpsRequest(
+      url,
+      {
+        method: "GET",
+        servername: url.hostname,
+        headers: { Accept: "application/json", "User-Agent": "Contour-Authorization-Server/0.3" },
+        timeout: CIMD_TIMEOUT_MS,
+        lookup: (_host, _opts, cb) => {
+          const all = typeof _opts === "object" && _opts !== null && (_opts as { all?: boolean }).all;
+          if (all) (cb as unknown as (e: null, a: { address: string; family: number }[]) => void)(null, [pinned]);
+          else cb(null, pinned.address, pinned.family);
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        let total = 0;
+        res.on("data", (c: Buffer) => {
+          total += c.length;
+          if (total > CIMD_MAX_BYTES) {
+            req.destroy(new Error("too large"));
+            return;
+          }
+          chunks.push(c);
+        });
+        res.on("end", () => {
+          const headers = new Headers();
+          for (const [k, v] of Object.entries(res.headers)) if (typeof v === "string") headers.set(k, v);
+          resolve(new Response(Buffer.concat(chunks), { status: res.statusCode ?? 0, headers }));
+        });
+        res.on("error", reject);
+      },
+    );
+    req.on("timeout", () => req.destroy(new Error("timeout")));
+    req.on("error", reject);
+    req.end();
+  });
 }
 
 async function readCapped(res: Response, max: number): Promise<string> {
@@ -243,21 +300,24 @@ function ttlFromCacheControl(header: string | null): number {
 type CimdDoc = { clientName: string; redirectUris: string[]; clientUri: string | null; ttl: number };
 
 async function fetchCimd(url: URL): Promise<CimdDoc> {
-  await assertPublicHost(url.hostname);
+  // Unauthenticated callers can trigger this fetch; bound it per target host and globally.
+  if (!(await allowRequest("cimd-host", url.hostname, 3600, 20)) || !(await allowRequest("cimd-global", "all", 60, 30))) {
+    cimdFail("rate limited");
+  }
+  const pinned = await resolvePublicHost(url.hostname);
   let res: Response;
   try {
-    res = await fetch(url, {
-      method: "GET",
-      redirect: "error", // never follow redirects (SSRF / identity confusion)
-      signal: AbortSignal.timeout(CIMD_TIMEOUT_MS),
-      headers: { Accept: "application/json", "User-Agent": "Contour-Authorization-Server/0.3" },
-      cache: "no-store",
-    });
+    res = await pinnedGet(url, pinned); // redirects are never followed (3xx fails below)
   } catch {
-    throw new OAuthError("invalid_client", "Client metadata document could not be fetched");
+    cimdFail("fetch failed");
   }
-  if (res.status !== 200) throw new OAuthError("invalid_client", `Client metadata document fetch returned HTTP ${res.status}`);
-  const text = await readCapped(res, CIMD_MAX_BYTES);
+  if (res.status !== 200) cimdFail(`HTTP ${res.status}`);
+  let text: string;
+  try {
+    text = await readCapped(res, CIMD_MAX_BYTES);
+  } catch {
+    cimdFail("document too large");
+  }
   let doc: unknown;
   try {
     doc = JSON.parse(text);

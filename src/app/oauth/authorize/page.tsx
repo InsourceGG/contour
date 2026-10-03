@@ -40,7 +40,6 @@ const SCOPE_COPY: Record<Scope, { title: string; detail: string }> = {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="mx-auto w-full max-w-xl px-4 py-12 text-zinc-900 dark:text-zinc-100">
-      <p className="mb-6 text-sm font-semibold tracking-wide text-zinc-500">CONTOUR</p>
       {children}
     </main>
   );
@@ -67,7 +66,24 @@ export default async function AuthorizePage({ searchParams }: PageProps<"/oauth/
   const v = await validateAuthorizeRequest(raw);
   if (v.kind === "fatal") return <ErrorView title="This authorization request is invalid" message={v.message} />;
   if (v.kind === "redirect_error") {
-    redirect(buildClientRedirect(v.redirectUri, { error: v.error, error_description: v.description, state: v.state }));
+    // RFC 9700 §4.11.2: never auto-redirect errors to an unverified client's
+    // redirect URI (open-redirector). Show the error and let the person choose.
+    const back = buildClientRedirect(v.redirectUri, { error: v.error, error_description: v.description, state: v.state });
+    return (
+      <Shell>
+        <h1 className="text-xl font-semibold">This authorization request is invalid</h1>
+        <p className="mt-3 text-zinc-700 dark:text-zinc-300">{v.description}.</p>
+        <p className="mt-6 text-sm text-zinc-600 dark:text-zinc-400">
+          The application asked to be sent back to <strong className="break-all">{new URL(v.redirectUri).host}</strong>. Only continue if you
+          started this connection.
+        </p>
+        <p className="mt-4">
+          <a className="underline underline-offset-4" href={back} rel="noreferrer">
+            Return to the application with this error
+          </a>
+        </p>
+      </Shell>
+    );
   }
   const req = v.request;
 
@@ -88,7 +104,7 @@ export default async function AuthorizePage({ searchParams }: PageProps<"/oauth/
     error_description: "The user denied the request",
     state: req.state,
   });
-  if (!(await isAgentAccessEnabled(APP_ID))) {
+  if (!(await isAgentAccessEnabled(user.tenantId, APP_ID))) {
     return (
       <Shell>
         <h1 className="text-xl font-semibold">Agent access is turned off</h1>
@@ -132,7 +148,7 @@ export default async function AuthorizePage({ searchParams }: PageProps<"/oauth/
         )}
         <p className="mt-1">
           After you decide you will be returned to <strong className="break-all">{redirectHost}</strong>
-          {req.loopbackRedirect ? " — an application running on this computer." : "."}
+          {req.loopbackRedirect ? ", an application running on this computer." : "."}
         </p>
       </div>
 
@@ -143,7 +159,7 @@ export default async function AuthorizePage({ searchParams }: PageProps<"/oauth/
 
       <form method="post" action="/oauth/authorize/decision" className="mt-6">
         {hidden}
-        <input type="hidden" name="csrf" value={csrfTokenFor(user.subjectId)} />
+        <input type="hidden" name="csrf" value={csrfTokenFor(user)} />
         <input type="hidden" name="scope_choice" value="1" />
 
         <fieldset>
@@ -178,7 +194,7 @@ export default async function AuthorizePage({ searchParams }: PageProps<"/oauth/
             It will never be able to
           </h2>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-zinc-700 dark:text-zinc-300">
-            <li>Save, apply, undo or reset a layout — only you can, in Contour</li>
+            <li>Save, apply, undo or reset a layout. Only you can do that, in Contour.</li>
             <li>Change business data or perform business actions</li>
             <li>Change your permissions, or see other users or workspaces</li>
           </ul>

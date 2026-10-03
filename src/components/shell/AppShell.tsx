@@ -21,7 +21,7 @@ export function AppShell({ user, children }: { user: HostUser; children: ReactNo
     ...(user.role === "operator" ? [{ href: "/console", label: "Console" }] : []),
   ];
   return (
-    <CsrfProvider token={csrfTokenFor(user.subjectId)}>
+    <CsrfProvider token={csrfTokenFor(user)}>
       <a href="#main" className="skip-link">
         Skip to main content
       </a>

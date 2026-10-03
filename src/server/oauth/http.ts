@@ -57,7 +57,12 @@ export function publicClientId(request: Request, params: URLSearchParams): strin
     if (!m) throw new OAuthError("invalid_client", "Unsupported client authentication", 401);
     const decoded = Buffer.from(m[1], "base64").toString("utf8");
     const idx = decoded.indexOf(":");
-    const id = decodeURIComponent(idx >= 0 ? decoded.slice(0, idx) : decoded);
+    let id: string;
+    try {
+      id = decodeURIComponent(idx >= 0 ? decoded.slice(0, idx) : decoded);
+    } catch {
+      throw new OAuthError("invalid_client", "Malformed client credentials", 401);
+    }
     const secret = idx >= 0 ? decoded.slice(idx + 1) : "";
     if (secret !== "") throw new OAuthError("invalid_client", "This server only supports public clients (token_endpoint_auth_method=none)", 401);
     basicId = id;

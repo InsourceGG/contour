@@ -60,11 +60,11 @@ export function DecisionList({ rows }: { rows: DecisionRow[] }) {
             </div>
             {(d.rationale || d.outcomeReason) && <p className="mt-2 max-w-[75ch] text-sm text-ink-2">{d.rationale ?? d.outcomeReason}</p>}
             <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-6">
-              <Item label="Options considered" value={d.candidateIds.join(", ") || "—"} />
-              <Item label="Selected" value={d.selectedId ?? (d.outcome === "kept" ? "KEEP" : d.outcome === "asked" ? "ASK" : "—")} />
+              <Item label="Options considered" value={d.candidateIds.join(", ") || "n/a"} />
+              <Item label="Selected" value={d.selectedId ?? (d.outcome === "kept" ? "KEEP" : d.outcome === "asked" ? "ASK" : "n/a")} />
               <Item
                 label="Confidence"
-                value={d.confidence === null ? "—" : `${formatNumber(d.confidence, 2)} (needs ${formatNumber(d.confidenceFloor, 2)})`}
+                value={d.confidence === null ? "n/a" : `${formatNumber(d.confidence, 2)} (needs ${formatNumber(d.confidenceFloor, 2)})`}
               />
               <Item label="Company rules" value={VALIDATION[d.validation] ?? d.validation} />
               <Item
@@ -73,7 +73,7 @@ export function DecisionList({ rows }: { rows: DecisionRow[] }) {
               />
               <Item
                 label="Tokens and cost"
-                value={`${d.inputTokens ?? "—"} in, ${d.outputTokens ?? "—"} out, ${
+                value={`${d.inputTokens ?? "n/a"} in, ${d.outputTokens ?? "n/a"} out, ${
                   d.providerCost !== null && d.currency ? formatMoney(d.providerCost, d.currency.toUpperCase()) : "cost not reported"
                 }`}
               />

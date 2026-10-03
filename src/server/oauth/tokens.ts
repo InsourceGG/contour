@@ -54,18 +54,15 @@ export async function getActiveMembership(subjectId: string, tenantId: string, a
   return data as { role: string; role_version: number; status: string; data_access: boolean };
 }
 
-export async function isAgentAccessEnabled(appId: string): Promise<boolean> {
-  const { data, error } = await adminClient().from("apps").select("agent_access_enabled").eq("id", appId).maybeSingle();
-  if (error) throw new Error("app lookup failed");
-  return data?.agent_access_enabled === true;
-}
+import { isAgentAccessEnabled } from "../agent-access";
+export { isAgentAccessEnabled };
 
 async function assertGrantUsable(grant: GrantRow | null, expectedRevision: number): Promise<GrantRow> {
   if (!grant || grant.revoked_at) throw new OAuthError("invalid_grant", "The authorization has been revoked");
   if (grant.grant_revision !== expectedRevision) throw new OAuthError("invalid_grant", "The authorization was superseded by a newer consent");
   const member = await getActiveMembership(grant.subject_id, grant.tenant_id, grant.app_id);
   if (!member) throw new OAuthError("invalid_grant", "The user no longer has access to this app");
-  if (!(await isAgentAccessEnabled(grant.app_id))) throw new OAuthError("invalid_grant", "Agent access is disabled for this app");
+  if (!(await isAgentAccessEnabled(grant.tenant_id, grant.app_id))) throw new OAuthError("invalid_grant", "Agent access is disabled for this app");
   return grant;
 }
 

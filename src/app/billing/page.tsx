@@ -133,8 +133,8 @@ export default async function BillingPage({ searchParams }: PageProps<"/billing"
                     <tr key={c.id}>
                       <td>{formatDateTime(c.created_at)}</td>
                       <td>{CREDIT_STATUS[c.status] ?? c.status}</td>
-                      <td>{c.consumed_at ? formatDateTime(c.consumed_at) : "—"}</td>
-                      <td className="text-ink-2">{c.proposal_id ? <span title={c.proposal_id}>{c.proposal_id.slice(0, 8)}</span> : "—"}</td>
+                      <td>{c.consumed_at ? formatDateTime(c.consumed_at) : "n/a"}</td>
+                      <td className="text-ink-2">{c.proposal_id ? <span title={c.proposal_id}>{c.proposal_id.slice(0, 8)}</span> : "n/a"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -169,7 +169,7 @@ export default async function BillingPage({ searchParams }: PageProps<"/billing"
                       <td>{formatDateTime(o.created_at)}</td>
                       <td>{ORDER_STATUS[o.status] ?? o.status}</td>
                       <td className="num">{formatMoney(o.amount / 100, o.currency.toUpperCase())}</td>
-                      <td>{o.granted_at ? formatDateTime(o.granted_at) : "—"}</td>
+                      <td>{o.granted_at ? formatDateTime(o.granted_at) : "n/a"}</td>
                     </tr>
                   ))}
                 </tbody>

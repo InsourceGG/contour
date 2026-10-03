@@ -37,6 +37,10 @@ beforeAll(async () => {
   sam = await ctxFor("sam@contour.demo");
   taylor = await ctxFor("taylor@contour.demo");
   await admin().from("apps").update({ agent_access_enabled: true }).eq("id", "ops-demo");
+  await admin().from("tenant_app_settings").upsert([
+    { tenant_id: "acme", app_id: "ops-demo", agent_access_enabled: true },
+    { tenant_id: "globex", app_id: "ops-demo", agent_access_enabled: true },
+  ]);
 });
 
 beforeEach(async () => {
@@ -408,6 +412,21 @@ describe("A11 version and access changes", () => {
       expect(await code(b.describeSurface(alex))).toBe("OK");
     } finally {
       await admin().from("apps").update({ agent_access_enabled: true }).eq("id", "ops-demo");
+    }
+  });
+});
+
+describe("Per-tenant agent access (security review finding 1)", () => {
+  it("one tenant's switch never affects another tenant", async () => {
+    const b = brokerWith(fixedSelector("guided"));
+    const taylorAgent = await ctxFor("taylor@contour.demo", { channel: "mcp" });
+    await admin().from("tenant_app_settings").upsert({ tenant_id: "acme", app_id: "ops-demo", agent_access_enabled: false });
+    try {
+      expect(await code(b.describeSurface(alexAgent))).toBe("AGENT_ACCESS_DISABLED");
+      expect(await code(b.describeSurface(taylorAgent))).toBe("OK");
+      expect(await code(b.describeSurface(alex))).toBe("OK");
+    } finally {
+      await admin().from("tenant_app_settings").upsert({ tenant_id: "acme", app_id: "ops-demo", agent_access_enabled: true });
     }
   });
 });

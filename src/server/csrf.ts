@@ -5,9 +5,10 @@ import { env } from "./env";
 
 export const CSRF_HEADER = "x-contour-csrf";
 
-/** Session-bound CSRF token: HMAC(secret, subject). Rendered into host pages. */
-export function csrfTokenFor(subjectId: string): string {
-  return createHmac("sha256", env.csrfSecret).update(`csrf:${subjectId}`).digest("base64url");
+/** Session-bound CSRF token: HMAC(secret, subject, auth session). Rendered
+ *  into host pages; changes on every sign-in and dies with the session. */
+export function csrfTokenFor(user: { subjectId: string; sessionId: string }): string {
+  return createHmac("sha256", env.csrfSecret).update(`csrf:${user.subjectId}:${user.sessionId}`).digest("base64url");
 }
 
 /**
@@ -15,7 +16,7 @@ export function csrfTokenFor(subjectId: string): string {
  * token. Combined with SameSite=Lax auth cookies this blocks cross-site
  * approval forgery; a model or preview link alone can never approve.
  */
-export function assertCsrf(request: Request, subjectId: string) {
+export function assertCsrf(request: Request, user: { subjectId: string; sessionId: string }) {
   const origin = request.headers.get("origin");
   const expectedOrigin = new URL(env.appUrl).origin;
   const requestOrigin = new URL(request.url).origin;
@@ -23,7 +24,7 @@ export function assertCsrf(request: Request, subjectId: string) {
     throw new ContourError("FORBIDDEN", "Cross-origin request rejected");
   }
   const provided = request.headers.get(CSRF_HEADER) ?? "";
-  const expected = csrfTokenFor(subjectId);
+  const expected = csrfTokenFor(user);
   const a = Buffer.from(provided);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !timingSafeEqual(a, b)) {

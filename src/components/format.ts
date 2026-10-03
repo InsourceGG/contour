@@ -28,7 +28,7 @@ export function formatCompact(value: number): string {
 }
 
 export function formatPct(value: number | null | undefined, digits = 1, signed = false): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  if (value === null || value === undefined || !Number.isFinite(value)) return "n/a";
   const s = `${formatNumber(Math.abs(value), digits)}%`;
   if (!signed) return value < 0 ? `-${s}` : s;
   return value > 0 ? `+${s}` : value < 0 ? `−${s}` : s;
@@ -36,7 +36,7 @@ export function formatPct(value: number | null | undefined, digits = 1, signed =
 
 /** Rates arrive as 0..1 fractions. */
 export function formatRate(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  if (value === null || value === undefined || !Number.isFinite(value)) return "n/a";
   return formatPct(value * 100, 0);
 }
 
@@ -62,7 +62,7 @@ export function formatDate(iso: string): string {
 }
 
 export function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "n/a";
   const d = parse(iso);
   return d ? `${dateTimeFmt.format(d)} UTC` : iso;
 }
@@ -86,7 +86,7 @@ export function formatAgo(iso: string, reference: string): string {
 }
 
 export function formatMs(ms: number | null | undefined): string {
-  if (ms === null || ms === undefined || !Number.isFinite(ms)) return "—";
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return "n/a";
   return ms >= 1000 ? `${formatNumber(ms / 1000, 2)} s` : `${formatNumber(ms)} ms`;
 }
 

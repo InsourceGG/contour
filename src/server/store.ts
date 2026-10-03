@@ -1,6 +1,8 @@
 import "server-only";
 import type { ContourStore, DecisionEvent, HistoryEntry, Membership, Owner, RpcResult, StoredView } from "@/sdk/broker";
-import { ContourError, type Proposal, type UserPreferences } from "@/sdk/types";
+import { ContourError, type ManualPin, type Proposal, type UserPreferences } from "@/sdk/types";
+import { ManualPinSchema } from "@/sdk/validate";
+import { isAgentAccessEnabled } from "./agent-access";
 import { adminClient } from "./supabase";
 
 /**
@@ -115,10 +117,12 @@ export const supabaseStore: ContourStore = {
     };
   },
 
-  async isAgentAccessEnabled(appId) {
-    const { data, error } = await db().from("apps").select("agent_access_enabled").eq("id", appId).maybeSingle();
-    if (error) fail("isAgentAccessEnabled", error);
-    return Boolean(data?.agent_access_enabled);
+  async isAgentAccessEnabled(tenantId, appId) {
+    try {
+      return await isAgentAccessEnabled(tenantId, appId);
+    } catch {
+      fail("isAgentAccessEnabled", null);
+    }
   },
 
   async getActiveView(owner): Promise<StoredView | null> {
@@ -196,7 +200,13 @@ export const supabaseStore: ContourStore = {
       ...(data.expertise ? { expertise: data.expertise } : {}),
       ...(data.density ? { density: data.density } : {}),
       ...(data.help ? { help: data.help } : {}),
-      pins: Array.isArray(data.pins) ? data.pins : [],
+      // Stored pins are re-parsed with the closed schema; malformed entries are dropped.
+      pins: Array.isArray(data.pins)
+        ? data.pins.flatMap((p: unknown) => {
+            const r = ManualPinSchema.safeParse(p);
+            return r.success ? [r.data as ManualPin] : [];
+          })
+        : [],
     };
   },
 

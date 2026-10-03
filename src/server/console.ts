@@ -71,7 +71,7 @@ export async function getConsoleData(): Promise<ConsoleData> {
       .limit(5000),
     db.from("proposals").select("subject_id,status,task,expertise,candidate_id").eq("tenant_id", t).eq("app_id", APP_ID).gte("created_at", since).limit(5000),
     db.from("audit_events").select("kind,created_at,ref").eq("tenant_id", t).eq("app_id", APP_ID).order("created_at", { ascending: false }).limit(200),
-    db.from("apps").select("agent_access_enabled").eq("id", APP_ID).single(),
+    db.from("tenant_app_settings").select("agent_access_enabled").eq("tenant_id", t).eq("app_id", APP_ID).maybeSingle(),
     db.from("oauth_grants").select("subject_id,client_id,revoked_at,oauth_clients(client_name)").eq("tenant_id", t).eq("app_id", APP_ID).limit(1000),
     db.from("credits").select("status").eq("tenant_id", t).eq("app_id", APP_ID).limit(5000),
     db.from("billing_orders").select("status").eq("tenant_id", t).eq("app_id", APP_ID).limit(5000),
@@ -145,7 +145,7 @@ export async function getConsoleData(): Promise<ConsoleData> {
   return {
     manifest: overviewManifest,
     manifestHash: hashJson(overviewManifest),
-    agentAccessEnabled: Boolean(app.data?.agent_access_enabled),
+    agentAccessEnabled: (app.data?.agent_access_enabled ?? true) === true,
     minCohort: MIN_COHORT,
     totals: {
       users: users.size,

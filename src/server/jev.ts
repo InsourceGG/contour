@@ -26,8 +26,8 @@ export function buildJevRequest(input: SelectorInput, model: string) {
 
   const lines = [
     `Surface: operations overview dashboard.`,
-    `Explicit task: ${input.task.label} — ${input.task.description}`,
-    `Explicit expertise: ${input.expertise.label} — ${input.expertise.description}`,
+    `Explicit task: ${input.task.label}: ${input.task.description}`,
+    `Explicit expertise: ${input.expertise.label}: ${input.expertise.description}`,
     `Stated preferences: ${prefs}.`,
     input.current.matchesCandidate
       ? `Current view: identical to candidate "${input.current.matchesCandidate}". ${input.current.summary}`

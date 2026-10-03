@@ -44,7 +44,7 @@ function pkce() {
   return { verifier, challenge };
 }
 
-type Session = { cookie: string; subjectId: string };
+type Session = { cookie: string; subjectId: string; sessionId: string };
 const sessions = new Map<string, Session>();
 
 /** Signs in with Supabase password grant and returns the @supabase/ssr cookies. */
@@ -67,7 +67,8 @@ async function signIn(email: string): Promise<Session> {
   if (error || !data.user) throw new Error(`Sign-in failed for ${email}: ${error?.message ?? "no user"} (are the demo users seeded?)`);
   await new Promise((r) => setTimeout(r, 50));
   const cookie = [...jar].map(([n, v]) => `${n}=${v}`).join("; ");
-  const s = { cookie, subjectId: data.user.id };
+  const sessionId = JSON.parse(Buffer.from(data.session!.access_token.split(".")[1], "base64url").toString()).session_id as string;
+  const s = { cookie, subjectId: data.user.id, sessionId };
   sessions.set(email, s);
   return s;
 }
@@ -202,8 +203,8 @@ async function grantIdForToken(accessToken: string): Promise<string> {
   return data!.grant_id as string;
 }
 
-function csrfFor(subjectId: string) {
-  return createHmac("sha256", process.env.CONTOUR_CSRF_SECRET!).update(`csrf:${subjectId}`).digest("base64url");
+function csrfFor(s: { subjectId: string; sessionId: string }) {
+  return createHmac("sha256", process.env.CONTOUR_CSRF_SECRET!).update(`csrf:${s.subjectId}:${s.sessionId}`).digest("base64url");
 }
 
 // -------------------------------------------------------------------- tests
@@ -342,7 +343,7 @@ describe("authorization endpoint", () => {
     expect(await page.text()).toContain('name="csrf"');
   });
 
-  it("requires PKCE S256 and the exact MCP resource (errors go back to the client)", async () => {
+  it("requires PKCE S256 and the exact MCP resource (errors shown, never auto-redirected: RFC 9700 §4.11.2)", async () => {
     const s = await signIn(ALEX);
     const redirectUri = "http://127.0.0.1:53682/callback";
     const { body } = await register(redirectUri);
@@ -355,20 +356,31 @@ describe("authorization endpoint", () => {
       [{ response_type: "token" }, "unsupported_response_type"],
       [{ scope: "view:commit" }, "invalid_scope"],
     ];
+    const linkFrom = (html: string) => {
+      const m = /href="(http:\/\/127\.0\.0\.1:53682\/callback[^"]*)"/.exec(html);
+      return m ? new URL(m[1].replace(/&amp;/g, "&")) : null;
+    };
     for (const [override, expected] of cases) {
       const params = authorizeParams({ client_id: clientId, redirect_uri: redirectUri, code_challenge: pkce().challenge, ...override });
       const res = await getAuthorize(params, s.cookie);
-      expect([302, 303, 307], JSON.stringify(override)).toContain(res.status);
-      const loc = new URL(res.headers.get("location")!);
-      expect(loc.origin + loc.pathname).toBe(redirectUri);
-      expect(loc.searchParams.get("error"), JSON.stringify(override)).toBe(expected);
-      expect(loc.searchParams.get("state")).toBe(params.state);
-      expect(loc.searchParams.get("iss")).toBe(ISSUER);
+      expect(res.status, JSON.stringify(override)).toBe(200);
+      const loc = linkFrom(await res.text());
+      expect(loc, JSON.stringify(override)).not.toBeNull();
+      expect(loc!.searchParams.get("error"), JSON.stringify(override)).toBe(expected);
+      expect(loc!.searchParams.get("state")).toBe(params.state);
+      expect(loc!.searchParams.get("iss")).toBe(ISSUER);
     }
+    // Same for a signed-out visitor: no redirect to an attacker-registered URI.
+    const evil = await register("https://evil.example/cb");
+    const anon = await getAuthorize(
+      authorizeParams({ client_id: evil.body.client_id as string, redirect_uri: "https://evil.example/cb", code_challenge: pkce().challenge, response_type: "token" }),
+    );
+    expect(anon.status).toBe(200);
+    expect(anon.headers.get("location")).toBeNull();
     const noResource = authorizeParams({ client_id: clientId, redirect_uri: redirectUri, code_challenge: pkce().challenge });
     delete noResource.resource;
     const r = await getAuthorize(noResource, s.cookie);
-    expect(new URL(r.headers.get("location")!).searchParams.get("error")).toBe("invalid_target");
+    expect(linkFrom(await r.text())!.searchParams.get("error")).toBe("invalid_target");
   });
 
   it("rejects a consent POST without a valid CSRF token or from another origin", async () => {
@@ -384,8 +396,8 @@ describe("authorization endpoint", () => {
         body: new URLSearchParams({ ...params, csrf, decision: "approve" }),
       });
     expect((await post({ Origin: BASE }, "forged")).status).toBe(403);
-    expect((await post({ Origin: "https://evil.example" }, csrfFor(s.subjectId))).status).toBe(403);
-    expect((await post({}, csrfFor(s.subjectId))).status).toBe(403);
+    expect((await post({ Origin: "https://evil.example" }, csrfFor(s))).status).toBe(403);
+    expect((await post({}, csrfFor(s))).status).toBe(403);
   });
 
   it("deny redirects with access_denied", async () => {
@@ -708,18 +720,24 @@ describe("bearer token validation on /api/mcp", () => {
     // Without CSRF: refused.
     const noCsrf = await fetch(`${BASE}/api/host/agents/${grantId}/revoke`, { method: "POST", headers: { Cookie: s.cookie, Origin: BASE } });
     expect(noCsrf.status).toBe(403);
+    // A token minted for a different sign-in session of the same user: refused (session-bound CSRF).
+    const otherSession = await fetch(`${BASE}/api/host/agents/${grantId}/revoke`, {
+      method: "POST",
+      headers: { Cookie: s.cookie, Origin: BASE, "x-contour-csrf": csrfFor({ subjectId: s.subjectId, sessionId: "00000000-0000-0000-0000-000000000000" }) },
+    });
+    expect(otherSession.status).toBe(403);
     // Another user cannot revoke Alex's grant.
     const t = await signIn(TAYLOR);
     const foreign = await fetch(`${BASE}/api/host/agents/${grantId}/revoke`, {
       method: "POST",
-      headers: { Cookie: t.cookie, Origin: BASE, "x-contour-csrf": csrfFor(t.subjectId) },
+      headers: { Cookie: t.cookie, Origin: BASE, "x-contour-csrf": csrfFor(t) },
     });
     expect(foreign.status).toBe(404);
     expect((await mcp(f.accessToken, "tools/list")).res.status).toBe(200);
 
     const ok = await fetch(`${BASE}/api/host/agents/${grantId}/revoke`, {
       method: "POST",
-      headers: { Cookie: s.cookie, Origin: BASE, "x-contour-csrf": csrfFor(s.subjectId) },
+      headers: { Cookie: s.cookie, Origin: BASE, "x-contour-csrf": csrfFor(s) },
     });
     expect(ok.status).toBe(200);
     expect((await mcp(f.accessToken, "tools/list")).res.status).toBe(401);
@@ -763,7 +781,7 @@ describe("operator kill switch", () => {
     const a = await signIn(ALEX);
     const denied = await fetch(`${BASE}/api/console/revoke-grants`, {
       method: "POST",
-      headers: { Cookie: a.cookie, Origin: BASE, "x-contour-csrf": csrfFor(a.subjectId) },
+      headers: { Cookie: a.cookie, Origin: BASE, "x-contour-csrf": csrfFor(a) },
     });
     expect(denied.status).toBe(403);
     expect((await mcp(victim.accessToken, "tools/list")).res.status).toBe(200);
@@ -777,7 +795,7 @@ describe("operator kill switch", () => {
     }
     const ok = await fetch(`${BASE}/api/console/revoke-grants`, {
       method: "POST",
-      headers: { Cookie: m.cookie, Origin: BASE, "x-contour-csrf": csrfFor(m.subjectId) },
+      headers: { Cookie: m.cookie, Origin: BASE, "x-contour-csrf": csrfFor(m) },
     });
     expect(ok.status).toBe(200);
     const body = await ok.json();
@@ -785,5 +803,25 @@ describe("operator kill switch", () => {
     expect((await mcp(victim.accessToken, "tools/list")).res.status).toBe(401);
     // Other tenants are unaffected.
     expect((await mcp(globex.accessToken, "tools/list")).res.status).toBe(200);
+  }, 90_000);
+
+  it("the agent-access switch is scoped to the operator's own tenant", async () => {
+    const acmeAgent = await fullFlow(ALEX);
+    const globexAgent = await fullFlow(TAYLOR);
+    const m = await signIn(MORGAN);
+    const toggle = (enabled: boolean) =>
+      fetch(`${BASE}/api/console/agent-access`, {
+        method: "POST",
+        headers: { Cookie: m.cookie, Origin: BASE, "Content-Type": "application/json", "x-contour-csrf": csrfFor(m) },
+        body: JSON.stringify({ enabled }),
+      });
+    expect((await toggle(false)).status).toBe(200);
+    try {
+      expect((await mcp(acmeAgent.accessToken, "tools/list")).res.status).toBe(403);
+      expect((await mcp(globexAgent.accessToken, "tools/list")).res.status).toBe(200);
+    } finally {
+      expect((await toggle(true)).status).toBe(200);
+    }
+    expect((await mcp(acmeAgent.accessToken, "tools/list")).res.status).toBe(200);
   }, 90_000);
 });

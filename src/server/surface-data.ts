@@ -8,7 +8,7 @@ import { supabaseStore } from "./store";
 /**
  * Fetches reader data for the visible components of a validated config in
  * the host app. Data permission is checked fresh (membership.data_access);
- * layout visibility never grants access — a hidden component's data is
+ * layout visibility never grants access, a hidden component's data is
  * simply not fetched, and a visible one still requires permission.
  */
 export async function getSurfaceData(ctx: VerifiedContext, config: ViewConfig): Promise<SurfaceData> {
