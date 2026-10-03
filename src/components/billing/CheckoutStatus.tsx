@@ -30,7 +30,7 @@ export function CheckoutStatus({ initialAvailable, latestOrderGranted }: { initi
     <div role="status" className={`notice ${arrived ? "notice-success" : "notice-info"}`}>
       <IconInfo size={18} />
       <div>
-        <p className="font-semibold">Stripe received your payment. Your credit appears once our server verifies Stripe's signed confirmation.</p>
+        <p className="font-semibold">Stripe received your payment. Your credit appears once our server verifies Stripe&apos;s signed confirmation.</p>
         <p className="text-ink-2">
           {arrived
             ? "Verified. Your new credit is in your balance."
