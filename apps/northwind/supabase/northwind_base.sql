@@ -109,7 +109,7 @@ begin
     set status = 'pending', updated_at = new.created_at
     where id = new.ticket_id and team = new.team;
   insert into northwind.customer_events (customer_id, ticket_id, team, kind, description, created_at)
-    select customer_id, id, team, 'reply', 'Support sent a reply and is waiting for the customer.', new.created_at
+    select customer_id, id, team, 'reply', 'Support added a reply to the customer conversation.', new.created_at
     from northwind.tickets where id = new.ticket_id and team = new.team;
   return new;
 end;
