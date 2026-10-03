@@ -854,6 +854,9 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
       default_config: manifest.defaultConfig as unknown as JsonValue,
       default_hash: hashJson(manifest.defaultConfig),
       history_limit: manifest.limits.historyLimit,
+      // Fresh role version from the membership re-check above. Schema-template
+      // installs compare it in SQL; the public (Acme) RPC ignores it.
+      role_version: membership.roleVersion,
     });
     return mapRpc(result) as { ok: true; revision: number; proposalId: string; replayed?: boolean };
   }
@@ -872,7 +875,7 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
 
   async function undo(ctx: VerifiedContext, raw: unknown) {
     requireHost(ctx);
-    await requireMembership(ctx);
+    const membership = await requireMembership(ctx);
     const manifest = manifestFor(ctx);
     const owner = ownerOf(ctx);
     const input = parse(SnapshotOpSchema, raw);
@@ -912,13 +915,14 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
       default_config: manifest.defaultConfig as unknown as JsonValue,
       default_hash: hashJson(manifest.defaultConfig),
       history_limit: manifest.limits.historyLimit,
+      role_version: membership.roleVersion,
     });
     return mapRpc(result) as { ok: true; revision: number };
   }
 
   async function reset(ctx: VerifiedContext, raw: unknown) {
     requireHost(ctx);
-    await requireMembership(ctx);
+    const membership = await requireMembership(ctx);
     const manifest = manifestFor(ctx);
     const owner = ownerOf(ctx);
     const input = parse(SnapshotOpSchema, raw);
@@ -940,6 +944,7 @@ export function createAdaptiveBroker(opts: BrokerOptions) {
       default_config: manifest.defaultConfig as unknown as JsonValue,
       default_hash: hashJson(manifest.defaultConfig),
       history_limit: manifest.limits.historyLimit,
+      role_version: membership.roleVersion,
     });
     return mapRpc(result) as { ok: true; revision: number };
   }
