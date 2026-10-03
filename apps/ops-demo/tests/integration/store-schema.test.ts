@@ -7,7 +7,7 @@ import { admin } from "../support/fixtures";
 // The SDK store against a schema installed by `contour-migrate` (northwind):
 // text subject IDs, no memberships table, role version passed in the payload.
 
-const SCHEMA = "northwind";
+const SCHEMA = "northwind_contour";
 const client = admin();
 const db = () => client.schema(SCHEMA);
 const store = supabaseStore({ client, schema: SCHEMA, agentAccessEnabled: async () => true });
