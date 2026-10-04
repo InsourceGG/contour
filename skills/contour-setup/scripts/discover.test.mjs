@@ -18,8 +18,22 @@ const expectedVariants = {
   CustomerTimeline: { density: ['comfortable', 'compact'] },
 };
 
+// Discovery targets an app BEFORE integration, so test against the pristine
+// baseline (git tag northwind-baseline); fall back to the working tree.
+async function baselineNorthwind() {
+  const repo = path.resolve(scriptDirectory, '../../..');
+  try {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'nw-baseline-'));
+    const tar = execFileSync('git', ['-C', repo, 'archive', 'northwind-baseline', 'apps/northwind']);
+    execFileSync('tar', ['-x', '-C', dir], { input: tar });
+    return path.join(dir, 'apps/northwind');
+  } catch {
+    return northwind;
+  }
+}
+
 test('Northwind: resolves all six desk components through the barrel and preserves literal variants', async () => {
-  const result = await discover(northwind);
+  const result = await discover(await baselineNorthwind());
   assert.equal(result.framework.nextVersion, '16.3.8');
   assert.equal(result.framework.appRouter, true);
   const screen = result.candidateScreens.find(page => page.route === '/desk');
