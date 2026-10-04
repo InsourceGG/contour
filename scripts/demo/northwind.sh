@@ -249,9 +249,10 @@ begin;
 do $$
 begin
   if to_regclass('cloud.links') is not null then
-    delete from cloud.links where project_id in (select id from cloud.projects where base_url ilike '%northwind%');
+    delete from cloud.links where project_id in (select id from cloud.projects where base_url ilike '%northwind%' and base_url <> 'https://northwind-support-app.vercel.app');
   end if;
-  delete from cloud.projects where base_url ilike '%northwind%';
+  -- Never remove the deployed Northwind's registration; only demo-created ones.
+  delete from cloud.projects where base_url ilike '%northwind%' and base_url <> 'https://northwind-support-app.vercel.app';
 end
 $$;
 commit;
