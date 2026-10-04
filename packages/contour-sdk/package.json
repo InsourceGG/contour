@@ -1,0 +1,37 @@
+{
+  "name": "@contour/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./core": "./src/core/index.ts",
+    "./react": "./src/react/index.ts",
+    "./server": "./src/server/index.ts",
+    "./jev": "./src/jev/index.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "server-only": "^0.0.1"
+  },
+  "peerDependencies": {
+    "@supabase/supabase-js": "^2.117.2",
+    "next": "16.3.8",
+    "react": "19.2.8",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "^2.117.2",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "next": "16.3.8",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "typescript": "^5",
+    "vitest": "^5.0.3",
+    "zod": "^4.6.5"
+  }
+}

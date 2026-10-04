@@ -1,0 +1,7 @@
+node_modules/
+.env*
+coverage/
+.next/
+.screenshots/
+*.tsbuildinfo
+!.env.example

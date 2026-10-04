@@ -1,0 +1,896 @@
+-- Contour schema-scoped install for {{schema}}.
+-- Rendered by `contour-migrate --schema {{schema}}`. Do not edit the output by hand.
+--
+-- Built from apps/ops-demo/supabase/migrations (core, oauth_extras, retention,
+-- review_hardening) with these changes for a generic company install:
+--  * Every object lives in {{schema}}. Nothing touches the public schema.
+--  * Company tables (tenants, apps, membership rows, demo data) are not
+--    created. Membership comes from the host's identity.getMembership adapter.
+--  * subject_id is text with no FK to the auth schema (company IDs are not
+--    always Supabase auth UUIDs).
+--  * contour_apply_proposal / contour_commit_snapshot take the caller's fresh
+--    role version as p->>'role_version' instead of reading a membership row.
+--  * Service-role only: RLS is enabled on every table with no policies, and
+--    anon/authenticated hold no privileges on anything in {{schema}}.
+--  * Idempotent: safe to re-run (if not exists, create or replace, guarded
+--    constraint adds).
+
+begin;
+
+create schema if not exists {{schema}};
+
+-- ------------------------------------------------------------ settings
+create table if not exists {{schema}}.tenant_app_settings (
+  tenant_id text not null,
+  app_id text not null,
+  agent_access_enabled boolean not null default true,
+  updated_at timestamptz not null default now(),
+  updated_by text,
+  primary key (tenant_id, app_id)
+);
+
+create table if not exists {{schema}}.surface_manifests (
+  app_id text not null,
+  surface_id text not null,
+  manifest_version text not null,
+  policy_version text not null,
+  manifest_hash text not null,
+  manifest jsonb not null,
+  deployed_at timestamptz not null default now(),
+  primary key (app_id, surface_id, manifest_version, policy_version)
+);
+
+-- --------------------------------------------------------- user state
+create table if not exists {{schema}}.user_preferences (
+  tenant_id text not null,
+  app_id text not null,
+  subject_id text not null,
+  surface_id text not null,
+  expertise text check (expertise in ('beginner', 'expert')),
+  density text check (density in ('comfortable', 'compact')),
+  help text not null default 'auto' check (help in ('auto', 'show', 'hide')),
+  pins jsonb not null default '[]'::jsonb check (jsonb_typeof(pins) = 'array' and jsonb_array_length(pins) <= 12),
+  updated_at timestamptz not null default now(),
+  primary key (tenant_id, app_id, subject_id, surface_id)
+);
+
+create table if not exists {{schema}}.user_views (
+  tenant_id text not null,
+  app_id text not null,
+  subject_id text not null,
+  surface_id text not null,
+  revision integer not null check (revision >= 0),
+  parent_revision integer,
+  manifest_version text not null,
+  policy_version text not null,
+  config jsonb not null,
+  config_hash text not null,
+  updated_at timestamptz not null default now(),
+  primary key (tenant_id, app_id, subject_id, surface_id)
+);
+
+create table if not exists {{schema}}.view_history (
+  tenant_id text not null,
+  app_id text not null,
+  subject_id text not null,
+  surface_id text not null,
+  revision integer not null,
+  parent_revision integer,
+  source text not null check (source in ('default', 'proposal', 'undo', 'reset')),
+  proposal_id uuid,
+  manifest_version text not null,
+  policy_version text not null,
+  config jsonb not null,
+  config_hash text not null,
+  created_at timestamptz not null default now(),
+  primary key (tenant_id, app_id, subject_id, surface_id, revision)
+);
+
+create table if not exists {{schema}}.proposals (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id text not null,
+  app_id text not null,
+  subject_id text not null,
+  surface_id text not null,
+  client_id text not null,
+  base_revision integer not null,
+  manifest_version text not null,
+  policy_version text not null,
+  role_version integer not null,
+  config jsonb not null,
+  config_hash text not null,
+  candidate_id text not null,
+  status text not null check (status in ('READY', 'APPLIED', 'REJECTED', 'EXPIRED', 'STALE', 'INVALID')),
+  status_reason text,
+  task text not null,
+  expertise text not null,
+  preferences jsonb not null default '{}'::jsonb,
+  changes jsonb not null default '[]'::jsonb,
+  rationale text not null default '',
+  decision_id uuid not null,
+  job_id uuid not null unique,
+  request_id text not null check (length(request_id) between 8 and 128),
+  request_hash text not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  applied_at timestamptz,
+  applied_revision integer,
+  unique (tenant_id, app_id, subject_id, surface_id, request_id)
+);
+create index if not exists proposals_owner_idx on {{schema}}.proposals(tenant_id, app_id, subject_id, surface_id, created_at desc);
+
+-- Presentation-only progress, read by the authenticated host through the broker.
+create table if not exists {{schema}}.contour_jobs (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id text not null,
+  app_id text not null,
+  subject_id text not null,
+  surface_id text not null,
+  client_id text not null,
+  status text not null check (status in ('working', 'ready', 'kept', 'asked', 'failed')),
+  task text not null,
+  expertise text not null,
+  proposal_id uuid,
+  changed_components text[] not null default '{}',
+  message text,
+  started_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists contour_jobs_owner_idx on {{schema}}.contour_jobs(tenant_id, app_id, subject_id, surface_id, started_at desc);
+
+create table if not exists {{schema}}.approvals (
+  id uuid primary key default gen_random_uuid(),
+  proposal_id uuid not null unique references {{schema}}.proposals(id),
+  tenant_id text not null,
+  app_id text not null,
+  subject_id text not null,
+  surface_id text not null,
+  config_hash text not null,
+  base_revision integer not null,
+  proposal_expires_at timestamptz not null,
+  approved_at timestamptz not null default now(),
+  idempotency_key text not null,
+  channel text not null check (channel = 'host')
+);
+
+create table if not exists {{schema}}.idempotency_keys (
+  tenant_id text not null,
+  app_id text not null,
+  subject_id text not null,
+  surface_id text not null,
+  operation text not null,
+  key text not null check (length(key) between 8 and 128),
+  request_hash text not null,
+  response jsonb not null,
+  created_at timestamptz not null default now(),
+  primary key (tenant_id, app_id, subject_id, surface_id, operation, key)
+);
+
+-- ------------------------------------------------------- observability
+create table if not exists {{schema}}.decision_events (
+  id uuid primary key,
+  job_id uuid not null,
+  tenant_id text not null,
+  app_id text not null,
+  subject_id text not null,
+  surface_id text not null,
+  client_id text not null,
+  channel text not null,
+  manifest_version text not null,
+  policy_version text not null,
+  model_version text,
+  candidate_ids text[] not null default '{}',
+  candidate_hashes jsonb not null default '{}'::jsonb,
+  selected_id text,
+  distribution jsonb,
+  confidence double precision,
+  confidence_floor double precision,
+  inputs jsonb not null,
+  assumptions jsonb not null default '[]'::jsonb,
+  validation text not null,
+  validation_rules jsonb not null default '[]'::jsonb,
+  outcome text not null,
+  outcome_reason text,
+  provider_status text not null,
+  provider_latency_ms integer,
+  total_latency_ms integer,
+  input_tokens integer,
+  output_tokens integer,
+  provider_cost numeric(12, 8),
+  currency text,
+  rationale text,
+  proposal_id uuid,
+  created_at timestamptz not null default now()
+);
+create index if not exists decision_events_owner_idx on {{schema}}.decision_events(tenant_id, app_id, subject_id, created_at desc);
+create index if not exists decision_events_app_idx on {{schema}}.decision_events(tenant_id, app_id, created_at desc);
+
+create table if not exists {{schema}}.usage_events (
+  job_id uuid primary key,
+  tenant_id text not null,
+  app_id text not null,
+  subject_id text not null,
+  provider text not null,
+  model_version text,
+  provider_usage jsonb not null default '{}'::jsonb,
+  provider_cost numeric(12, 8),
+  currency text,
+  status text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists {{schema}}.audit_events (
+  id bigint generated always as identity primary key,
+  tenant_id text not null,
+  app_id text not null,
+  subject_id text,
+  surface_id text,
+  kind text not null,
+  ref text,
+  detail jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+-- The schema may already own an audit_events table (Cloud's registry log has
+-- contour_user/project_id columns). Add the Contour columns, nullable, so both
+-- writers share one table. No-op on a table created just above.
+alter table {{schema}}.audit_events
+  add column if not exists tenant_id text,
+  add column if not exists app_id text,
+  add column if not exists subject_id text,
+  add column if not exists surface_id text,
+  add column if not exists kind text,
+  add column if not exists ref text,
+  add column if not exists detail jsonb not null default '{}'::jsonb,
+  add column if not exists created_at timestamptz not null default now();
+create index if not exists audit_events_app_idx on {{schema}}.audit_events(tenant_id, app_id, created_at desc);
+
+-- --------------------------------------------------------------- billing
+create table if not exists {{schema}}.billing_orders (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id text not null,
+  app_id text not null,
+  subject_id text not null,
+  status text not null default 'pending' check (status in ('pending', 'granted', 'canceled', 'rejected')),
+  credits integer not null default 1 check (credits = 1),
+  amount integer not null,
+  currency text not null,
+  price_id text not null,
+  stripe_session_id text unique,
+  stripe_payment_intent text,
+  created_at timestamptz not null default now(),
+  granted_at timestamptz
+);
+
+create table if not exists {{schema}}.stripe_events (
+  event_id text primary key,
+  type text not null,
+  livemode boolean not null,
+  order_id uuid,
+  result text not null,
+  received_at timestamptz not null default now()
+);
+
+create table if not exists {{schema}}.credits (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id text not null,
+  app_id text not null,
+  subject_id text not null,
+  order_id uuid not null unique references {{schema}}.billing_orders(id),
+  status text not null default 'available' check (status in ('available', 'reserved', 'consumed')),
+  job_id uuid unique,
+  reserved_at timestamptz,
+  consumed_at timestamptz,
+  proposal_id uuid,
+  created_at timestamptz not null default now()
+);
+create index if not exists credits_owner_idx on {{schema}}.credits(tenant_id, app_id, subject_id, status);
+
+create table if not exists {{schema}}.credit_ledger (
+  id bigint generated always as identity primary key,
+  credit_id uuid not null references {{schema}}.credits(id),
+  tenant_id text not null,
+  app_id text not null,
+  subject_id text not null,
+  kind text not null check (kind in ('grant', 'reserve', 'consume', 'release')),
+  job_id uuid,
+  order_id uuid,
+  stripe_event_id text,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists credit_ledger_consume_once on {{schema}}.credit_ledger(credit_id) where kind = 'consume';
+create unique index if not exists credit_ledger_grant_once on {{schema}}.credit_ledger(credit_id) where kind = 'grant';
+
+-- ------------------------------------------------------------ OAuth / MCP
+create table if not exists {{schema}}.oauth_clients (
+  client_id text primary key check (length(client_id) between 8 and 512),
+  kind text not null check (kind in ('dcr', 'cimd', 'preregistered')),
+  client_name text not null,
+  redirect_uris text[] not null check (array_length(redirect_uris, 1) between 1 and 10),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  refreshed_at timestamptz not null default now()
+);
+
+create table if not exists {{schema}}.oauth_grants (
+  id uuid primary key default gen_random_uuid(),
+  subject_id text not null,
+  tenant_id text not null,
+  app_id text not null,
+  client_id text not null references {{schema}}.oauth_clients(client_id) on delete cascade,
+  scopes text[] not null,
+  surfaces text[] not null,
+  grant_revision integer not null default 1,
+  revoked_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (subject_id, tenant_id, app_id, client_id)
+);
+create index if not exists oauth_grants_tenant_app_idx on {{schema}}.oauth_grants(tenant_id, app_id);
+create index if not exists oauth_grants_subject_idx on {{schema}}.oauth_grants(subject_id, tenant_id, app_id);
+
+-- Codes are bound to the grant and grant revision they were issued under, so
+-- a code minted before a revoke or re-consent cannot be redeemed.
+create table if not exists {{schema}}.oauth_codes (
+  code_hash text primary key,
+  client_id text not null references {{schema}}.oauth_clients(client_id) on delete cascade,
+  subject_id text not null,
+  tenant_id text not null,
+  app_id text not null,
+  scopes text[] not null,
+  surfaces text[] not null,
+  resource text not null,
+  redirect_uri text not null,
+  code_challenge text not null,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz not null default now(),
+  grant_id uuid not null references {{schema}}.oauth_grants(id) on delete cascade,
+  grant_revision integer not null
+);
+create index if not exists oauth_codes_expires_idx on {{schema}}.oauth_codes(expires_at);
+
+create table if not exists {{schema}}.oauth_tokens (
+  token_hash text primary key,
+  grant_id uuid not null references {{schema}}.oauth_grants(id) on delete cascade,
+  kind text not null check (kind in ('access', 'refresh')),
+  resource text not null,
+  scopes text[] not null,
+  grant_revision integer not null,
+  expires_at timestamptz not null,
+  revoked_at timestamptz,
+  replaced_by text,
+  created_at timestamptz not null default now()
+);
+create index if not exists oauth_tokens_grant_idx on {{schema}}.oauth_tokens(grant_id);
+
+create table if not exists {{schema}}.rate_limits (
+  bucket text not null,
+  window_start timestamptz not null,
+  count integer not null default 0,
+  primary key (bucket, window_start)
+);
+
+-- Defence in depth: OAuth rows can never carry a scope outside the agent set
+-- (never the commit scope), regardless of application code.
+do $$
+begin
+  if not exists (select 1 from pg_constraint
+                 where conrelid = '{{schema}}.oauth_grants'::regclass and conname = 'oauth_grants_agent_scopes_only') then
+    alter table {{schema}}.oauth_grants add constraint oauth_grants_agent_scopes_only
+      check (scopes <@ array['view:read', 'data:read', 'view:propose']::text[]);
+  end if;
+  if not exists (select 1 from pg_constraint
+                 where conrelid = '{{schema}}.oauth_codes'::regclass and conname = 'oauth_codes_agent_scopes_only') then
+    alter table {{schema}}.oauth_codes add constraint oauth_codes_agent_scopes_only
+      check (scopes <@ array['view:read', 'data:read', 'view:propose']::text[]);
+  end if;
+  if not exists (select 1 from pg_constraint
+                 where conrelid = '{{schema}}.oauth_tokens'::regclass and conname = 'oauth_tokens_agent_scopes_only') then
+    alter table {{schema}}.oauth_tokens add constraint oauth_tokens_agent_scopes_only
+      check (scopes <@ array['view:read', 'data:read', 'view:propose']::text[]);
+  end if;
+end $$;
+
+-- -------------------------------------------------------------------- RLS
+-- Service-role only: RLS on, no policies.
+alter table {{schema}}.tenant_app_settings enable row level security;
+alter table {{schema}}.surface_manifests enable row level security;
+alter table {{schema}}.user_preferences enable row level security;
+alter table {{schema}}.user_views enable row level security;
+alter table {{schema}}.view_history enable row level security;
+alter table {{schema}}.proposals enable row level security;
+alter table {{schema}}.contour_jobs enable row level security;
+alter table {{schema}}.approvals enable row level security;
+alter table {{schema}}.idempotency_keys enable row level security;
+alter table {{schema}}.decision_events enable row level security;
+alter table {{schema}}.usage_events enable row level security;
+alter table {{schema}}.audit_events enable row level security;
+alter table {{schema}}.billing_orders enable row level security;
+alter table {{schema}}.stripe_events enable row level security;
+alter table {{schema}}.credits enable row level security;
+alter table {{schema}}.credit_ledger enable row level security;
+alter table {{schema}}.oauth_clients enable row level security;
+alter table {{schema}}.oauth_grants enable row level security;
+alter table {{schema}}.oauth_codes enable row level security;
+alter table {{schema}}.oauth_tokens enable row level security;
+alter table {{schema}}.rate_limits enable row level security;
+
+-- ===================================================== transactional RPCs
+-- SECURITY INVOKER, fixed empty search_path, executable only by service_role.
+-- They return jsonb {ok, code, ...} rather than raising for business outcomes
+-- so that status transitions (e.g. STALE) persist.
+
+-- Reserve one available credit for an adaptation job. Releases stale
+-- reservations (older than 10 minutes, no proposal) first.
+create or replace function {{schema}}.contour_reserve_credit(
+  p_tenant text, p_app text, p_subject text, p_job uuid
+) returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_credit {{schema}}.credits;
+begin
+  with stale as (
+    update {{schema}}.credits c set status = 'available', job_id = null, reserved_at = null
+    where c.tenant_id = p_tenant and c.app_id = p_app and c.subject_id = p_subject
+      and c.status = 'reserved' and c.reserved_at < now() - interval '10 minutes'
+    returning c.*
+  )
+  insert into {{schema}}.credit_ledger(credit_id, tenant_id, app_id, subject_id, kind, job_id)
+  select s.id, s.tenant_id, s.app_id, s.subject_id, 'release', null from stale s;
+
+  -- Idempotent: an existing reservation for this job is returned as-is.
+  select * into v_credit from {{schema}}.credits where job_id = p_job;
+  if found then
+    return jsonb_build_object('ok', true, 'creditId', v_credit.id, 'status', v_credit.status);
+  end if;
+
+  select * into v_credit from {{schema}}.credits c
+  where c.tenant_id = p_tenant and c.app_id = p_app and c.subject_id = p_subject and c.status = 'available'
+  order by c.created_at
+  for update skip locked
+  limit 1;
+  if not found then
+    return jsonb_build_object('ok', false, 'code', 'PAYMENT_REQUIRED');
+  end if;
+
+  update {{schema}}.credits set status = 'reserved', job_id = p_job, reserved_at = now() where id = v_credit.id;
+  insert into {{schema}}.credit_ledger(credit_id, tenant_id, app_id, subject_id, kind, job_id)
+  values (v_credit.id, p_tenant, p_app, p_subject, 'reserve', p_job);
+  return jsonb_build_object('ok', true, 'creditId', v_credit.id, 'status', 'reserved');
+end;
+$$;
+
+create or replace function {{schema}}.contour_release_credit(p_job uuid) returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_credit {{schema}}.credits;
+begin
+  select * into v_credit from {{schema}}.credits where job_id = p_job for update;
+  if not found or v_credit.status <> 'reserved' then
+    return jsonb_build_object('ok', true, 'released', false);
+  end if;
+  update {{schema}}.credits set status = 'available', job_id = null, reserved_at = null where id = v_credit.id;
+  insert into {{schema}}.credit_ledger(credit_id, tenant_id, app_id, subject_id, kind, job_id)
+  values (v_credit.id, v_credit.tenant_id, v_credit.app_id, v_credit.subject_id, 'release', p_job);
+  return jsonb_build_object('ok', true, 'released', true);
+end;
+$$;
+
+-- Persist a READY proposal and consume the job's reserved credit in one
+-- transaction. Idempotent per (owner, request_id): identical payload returns
+-- the existing proposal, a different payload is rejected. When the payload
+-- carries billing = 'none' (unmetered companies) the credit lookup and
+-- consumption are skipped entirely and no PAYMENT_REQUIRED is possible.
+create or replace function {{schema}}.contour_create_proposal(p jsonb) returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_existing {{schema}}.proposals;
+  v_credit {{schema}}.credits;
+  v_id uuid;
+  v_job uuid := (p->>'job_id')::uuid;
+  v_subject text := p->>'subject_id';
+  v_unmetered boolean := coalesce(p->>'billing', 'credits') = 'none';
+begin
+  select * into v_existing from {{schema}}.proposals
+  where tenant_id = p->>'tenant_id' and app_id = p->>'app_id' and subject_id = v_subject
+    and surface_id = p->>'surface_id' and request_id = p->>'request_id';
+  if found then
+    if v_existing.request_hash = p->>'request_hash' then
+      return jsonb_build_object('ok', true, 'replayed', true, 'proposalId', v_existing.id, 'jobId', v_existing.job_id);
+    end if;
+    return jsonb_build_object('ok', false, 'code', 'IDEMPOTENCY_CONFLICT');
+  end if;
+
+  if not v_unmetered then
+    select * into v_credit from {{schema}}.credits where job_id = v_job for update;
+    if not found or v_credit.status <> 'reserved'
+       or v_credit.subject_id <> v_subject or v_credit.tenant_id <> p->>'tenant_id' or v_credit.app_id <> p->>'app_id' then
+      return jsonb_build_object('ok', false, 'code', 'PAYMENT_REQUIRED');
+    end if;
+  end if;
+
+  insert into {{schema}}.proposals(
+    tenant_id, app_id, subject_id, surface_id, client_id, base_revision, manifest_version, policy_version,
+    role_version, config, config_hash, candidate_id, status, task, expertise, preferences, changes, rationale,
+    decision_id, job_id, request_id, request_hash, expires_at
+  ) values (
+    p->>'tenant_id', p->>'app_id', v_subject, p->>'surface_id', p->>'client_id', (p->>'base_revision')::int,
+    p->>'manifest_version', p->>'policy_version', (p->>'role_version')::int, p->'config', p->>'config_hash',
+    p->>'candidate_id', 'READY', p->>'task', p->>'expertise', coalesce(p->'preferences', '{}'::jsonb),
+    coalesce(p->'changes', '[]'::jsonb), coalesce(p->>'rationale', ''), (p->>'decision_id')::uuid, v_job,
+    p->>'request_id', p->>'request_hash', (p->>'expires_at')::timestamptz
+  ) returning id into v_id;
+
+  if not v_unmetered then
+    update {{schema}}.credits set status = 'consumed', consumed_at = now(), proposal_id = v_id where id = v_credit.id;
+    insert into {{schema}}.credit_ledger(credit_id, tenant_id, app_id, subject_id, kind, job_id)
+    values (v_credit.id, v_credit.tenant_id, v_credit.app_id, v_credit.subject_id, 'consume', v_job);
+  end if;
+
+  insert into {{schema}}.audit_events(tenant_id, app_id, subject_id, surface_id, kind, ref, detail)
+  values (p->>'tenant_id', p->>'app_id', v_subject, p->>'surface_id', 'proposal_created', v_id::text,
+          jsonb_build_object('jobId', v_job, 'clientId', p->>'client_id', 'candidateId', p->>'candidate_id'));
+  return jsonb_build_object('ok', true, 'replayed', false, 'proposalId', v_id, 'jobId', v_job,
+    'creditId', case when v_unmetered then null else v_credit.id end);
+end;
+$$;
+
+-- Internal: lock (creating if needed) the owner's active view row.
+create or replace function {{schema}}.contour_lock_view(
+  p_tenant text, p_app text, p_subject text, p_surface text,
+  p_default_config jsonb, p_default_hash text, p_manifest_version text, p_policy_version text
+) returns {{schema}}.user_views
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_view {{schema}}.user_views;
+begin
+  insert into {{schema}}.user_views(tenant_id, app_id, subject_id, surface_id, revision, parent_revision,
+    manifest_version, policy_version, config, config_hash)
+  values (p_tenant, p_app, p_subject, p_surface, 0, null, p_manifest_version, p_policy_version, p_default_config, p_default_hash)
+  on conflict do nothing;
+  insert into {{schema}}.view_history(tenant_id, app_id, subject_id, surface_id, revision, parent_revision, source,
+    manifest_version, policy_version, config, config_hash)
+  values (p_tenant, p_app, p_subject, p_surface, 0, null, 'default', p_manifest_version, p_policy_version, p_default_config, p_default_hash)
+  on conflict do nothing;
+  select * into v_view from {{schema}}.user_views
+  where tenant_id = p_tenant and app_id = p_app and subject_id = p_subject and surface_id = p_surface
+  for update;
+  return v_view;
+end;
+$$;
+
+-- Approve + apply a stored proposal atomically (host-only flow).
+-- Membership is the host's: the broker re-checks it through
+-- identity.getMembership immediately before this call and passes the fresh
+-- role version as p->>'role_version'. A missing role version is refused.
+create or replace function {{schema}}.contour_apply_proposal(p jsonb) returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_tenant text := p->>'tenant_id';
+  v_app text := p->>'app_id';
+  v_subject text := p->>'subject_id';
+  v_surface text := p->>'surface_id';
+  v_key text := p->>'idempotency_key';
+  v_req_hash text := p->>'request_hash';
+  v_role_version integer := nullif(p->>'role_version', '')::int;
+  v_idem {{schema}}.idempotency_keys;
+  v_prop {{schema}}.proposals;
+  v_view {{schema}}.user_views;
+  v_new_rev integer;
+  v_result jsonb;
+begin
+  select * into v_idem from {{schema}}.idempotency_keys
+  where tenant_id = v_tenant and app_id = v_app and subject_id = v_subject and surface_id = v_surface
+    and operation = 'apply' and key = v_key;
+  if found then
+    if v_idem.request_hash = v_req_hash then
+      return v_idem.response || jsonb_build_object('replayed', true);
+    end if;
+    return jsonb_build_object('ok', false, 'code', 'IDEMPOTENCY_CONFLICT');
+  end if;
+
+  select * into v_prop from {{schema}}.proposals where id = (p->>'proposal_id')::uuid for update;
+  -- Wrong owner is indistinguishable from not found.
+  if not found or v_prop.tenant_id <> v_tenant or v_prop.app_id <> v_app
+     or v_prop.subject_id <> v_subject or v_prop.surface_id <> v_surface then
+    return jsonb_build_object('ok', false, 'code', 'NOT_FOUND');
+  end if;
+  if v_prop.status <> 'READY' then
+    return jsonb_build_object('ok', false, 'code', 'PROPOSAL_NOT_READY', 'status', v_prop.status);
+  end if;
+  if v_prop.expires_at <= now() then
+    update {{schema}}.proposals set status = 'EXPIRED', status_reason = 'expired before approval' where id = v_prop.id;
+    return jsonb_build_object('ok', false, 'code', 'EXPIRED_PROPOSAL');
+  end if;
+  if v_prop.config_hash <> p->>'config_hash' then
+    return jsonb_build_object('ok', false, 'code', 'HASH_MISMATCH');
+  end if;
+
+  if v_role_version is null then
+    return jsonb_build_object('ok', false, 'code', 'FORBIDDEN');
+  end if;
+  if v_prop.manifest_version <> p->>'manifest_version' or v_prop.policy_version <> p->>'policy_version'
+     or v_prop.role_version <> v_role_version then
+    update {{schema}}.proposals set status = 'INVALID', status_reason = 'manifest, policy or role changed' where id = v_prop.id;
+    return jsonb_build_object('ok', false, 'code', 'INCOMPATIBLE_MANIFEST');
+  end if;
+
+  v_view := {{schema}}.contour_lock_view(v_tenant, v_app, v_subject, v_surface, p->'default_config', p->>'default_hash',
+                                         p->>'manifest_version', p->>'policy_version');
+  if v_view.revision <> v_prop.base_revision then
+    update {{schema}}.proposals set status = 'STALE', status_reason = 'base revision changed' where id = v_prop.id;
+    return jsonb_build_object('ok', false, 'code', 'STALE_REVISION', 'currentRevision', v_view.revision);
+  end if;
+
+  v_new_rev := v_view.revision + 1;
+  update {{schema}}.user_views set revision = v_new_rev, parent_revision = v_view.revision, config = v_prop.config,
+    config_hash = v_prop.config_hash, manifest_version = v_prop.manifest_version, policy_version = v_prop.policy_version,
+    updated_at = now()
+  where tenant_id = v_tenant and app_id = v_app and subject_id = v_subject and surface_id = v_surface;
+  insert into {{schema}}.view_history(tenant_id, app_id, subject_id, surface_id, revision, parent_revision, source,
+    proposal_id, manifest_version, policy_version, config, config_hash)
+  values (v_tenant, v_app, v_subject, v_surface, v_new_rev, v_view.revision, 'proposal', v_prop.id,
+    v_prop.manifest_version, v_prop.policy_version, v_prop.config, v_prop.config_hash);
+  insert into {{schema}}.approvals(proposal_id, tenant_id, app_id, subject_id, surface_id, config_hash, base_revision,
+    proposal_expires_at, idempotency_key, channel)
+  values (v_prop.id, v_tenant, v_app, v_subject, v_surface, v_prop.config_hash, v_prop.base_revision,
+    v_prop.expires_at, v_key, 'host');
+  update {{schema}}.proposals set status = 'APPLIED', applied_at = now(), applied_revision = v_new_rev where id = v_prop.id;
+  insert into {{schema}}.audit_events(tenant_id, app_id, subject_id, surface_id, kind, ref, detail)
+  values (v_tenant, v_app, v_subject, v_surface, 'view_committed', v_prop.id::text,
+    jsonb_build_object('revision', v_new_rev, 'jobId', v_prop.job_id, 'configHash', v_prop.config_hash));
+
+  delete from {{schema}}.view_history h
+  where h.tenant_id = v_tenant and h.app_id = v_app and h.subject_id = v_subject and h.surface_id = v_surface
+    and h.revision <= v_new_rev - coalesce((p->>'history_limit')::int, 20);
+
+  v_result := jsonb_build_object('ok', true, 'revision', v_new_rev, 'proposalId', v_prop.id, 'configHash', v_prop.config_hash);
+  insert into {{schema}}.idempotency_keys(tenant_id, app_id, subject_id, surface_id, operation, key, request_hash, response)
+  values (v_tenant, v_app, v_subject, v_surface, 'apply', v_key, v_req_hash, v_result);
+  return v_result;
+end;
+$$;
+
+-- Commit a server-computed snapshot (undo/reset) with compare-and-swap.
+-- As with apply, the broker re-checks membership just before this call and
+-- passes p->>'role_version'; a payload without it is refused.
+create or replace function {{schema}}.contour_commit_snapshot(p jsonb) returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_tenant text := p->>'tenant_id';
+  v_app text := p->>'app_id';
+  v_subject text := p->>'subject_id';
+  v_surface text := p->>'surface_id';
+  v_op text := p->>'operation';
+  v_key text := p->>'idempotency_key';
+  v_req_hash text := p->>'request_hash';
+  v_idem {{schema}}.idempotency_keys;
+  v_view {{schema}}.user_views;
+  v_new_rev integer;
+  v_result jsonb;
+begin
+  if v_op not in ('undo', 'reset') then
+    return jsonb_build_object('ok', false, 'code', 'INVALID_INPUT');
+  end if;
+  select * into v_idem from {{schema}}.idempotency_keys
+  where tenant_id = v_tenant and app_id = v_app and subject_id = v_subject and surface_id = v_surface
+    and operation = v_op and key = v_key;
+  if found then
+    if v_idem.request_hash = v_req_hash then
+      return v_idem.response || jsonb_build_object('replayed', true);
+    end if;
+    return jsonb_build_object('ok', false, 'code', 'IDEMPOTENCY_CONFLICT');
+  end if;
+
+  if nullif(p->>'role_version', '') is null then
+    return jsonb_build_object('ok', false, 'code', 'FORBIDDEN');
+  end if;
+
+  v_view := {{schema}}.contour_lock_view(v_tenant, v_app, v_subject, v_surface, p->'default_config', p->>'default_hash',
+                                         p->>'manifest_version', p->>'policy_version');
+  if v_view.revision <> (p->>'expected_revision')::int then
+    return jsonb_build_object('ok', false, 'code', 'STALE_REVISION', 'currentRevision', v_view.revision);
+  end if;
+
+  v_new_rev := v_view.revision + 1;
+  update {{schema}}.user_views set revision = v_new_rev, parent_revision = (p->>'parent_revision')::int,
+    config = p->'config', config_hash = p->>'config_hash', manifest_version = p->>'manifest_version',
+    policy_version = p->>'policy_version', updated_at = now()
+  where tenant_id = v_tenant and app_id = v_app and subject_id = v_subject and surface_id = v_surface;
+  insert into {{schema}}.view_history(tenant_id, app_id, subject_id, surface_id, revision, parent_revision, source,
+    manifest_version, policy_version, config, config_hash)
+  values (v_tenant, v_app, v_subject, v_surface, v_new_rev, (p->>'parent_revision')::int, v_op,
+    p->>'manifest_version', p->>'policy_version', p->'config', p->>'config_hash');
+  insert into {{schema}}.audit_events(tenant_id, app_id, subject_id, surface_id, kind, ref, detail)
+  values (v_tenant, v_app, v_subject, v_surface, 'view_' || v_op, v_new_rev::text,
+    jsonb_build_object('revision', v_new_rev, 'restoredFrom', p->>'restored_from', 'configHash', p->>'config_hash'));
+  delete from {{schema}}.view_history h
+  where h.tenant_id = v_tenant and h.app_id = v_app and h.subject_id = v_subject and h.surface_id = v_surface
+    and h.revision <= v_new_rev - coalesce((p->>'history_limit')::int, 20);
+
+  v_result := jsonb_build_object('ok', true, 'revision', v_new_rev, 'configHash', p->>'config_hash');
+  insert into {{schema}}.idempotency_keys(tenant_id, app_id, subject_id, surface_id, operation, key, request_hash, response)
+  values (v_tenant, v_app, v_subject, v_surface, v_op, v_key, v_req_hash, v_result);
+  return v_result;
+end;
+$$;
+
+-- Grant exactly one credit for a verified, paid Checkout Session. Dedupes
+-- Stripe event IDs and the order/session grant.
+create or replace function {{schema}}.contour_grant_credit(p jsonb) returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_order {{schema}}.billing_orders;
+  v_credit_id uuid;
+  v_inserted integer;
+begin
+  insert into {{schema}}.stripe_events(event_id, type, livemode, order_id, result)
+  values (p->>'event_id', p->>'event_type', (p->>'livemode')::boolean, (p->>'order_id')::uuid, 'processing')
+  on conflict (event_id) do nothing;
+  get diagnostics v_inserted = row_count;
+  if v_inserted = 0 then
+    return jsonb_build_object('ok', true, 'result', 'duplicate_event');
+  end if;
+
+  select * into v_order from {{schema}}.billing_orders where id = (p->>'order_id')::uuid for update;
+  if not found then
+    update {{schema}}.stripe_events set result = 'unknown_order' where event_id = p->>'event_id';
+    return jsonb_build_object('ok', false, 'result', 'unknown_order');
+  end if;
+  if v_order.stripe_session_id is distinct from p->>'session_id'
+     or v_order.tenant_id <> p->>'tenant_id' or v_order.subject_id <> p->>'subject_id' or v_order.app_id <> p->>'app_id'
+     or v_order.amount <> (p->>'amount')::int or v_order.currency <> p->>'currency' then
+    update {{schema}}.stripe_events set result = 'order_mismatch' where event_id = p->>'event_id';
+    return jsonb_build_object('ok', false, 'result', 'order_mismatch');
+  end if;
+  if v_order.status = 'granted' then
+    update {{schema}}.stripe_events set result = 'already_granted' where event_id = p->>'event_id';
+    return jsonb_build_object('ok', true, 'result', 'already_granted');
+  end if;
+  if v_order.status <> 'pending' then
+    update {{schema}}.stripe_events set result = 'order_not_pending' where event_id = p->>'event_id';
+    return jsonb_build_object('ok', false, 'result', 'order_not_pending');
+  end if;
+
+  insert into {{schema}}.credits(tenant_id, app_id, subject_id, order_id)
+  values (v_order.tenant_id, v_order.app_id, v_order.subject_id, v_order.id)
+  returning id into v_credit_id;
+  insert into {{schema}}.credit_ledger(credit_id, tenant_id, app_id, subject_id, kind, order_id, stripe_event_id)
+  values (v_credit_id, v_order.tenant_id, v_order.app_id, v_order.subject_id, 'grant', v_order.id, p->>'event_id');
+  update {{schema}}.billing_orders set status = 'granted', granted_at = now(), stripe_payment_intent = p->>'payment_intent'
+  where id = v_order.id;
+  update {{schema}}.stripe_events set result = 'granted' where event_id = p->>'event_id';
+  insert into {{schema}}.audit_events(tenant_id, app_id, subject_id, kind, ref, detail)
+  values (v_order.tenant_id, v_order.app_id, v_order.subject_id, 'credit_granted', v_order.id::text,
+    jsonb_build_object('creditId', v_credit_id, 'eventId', p->>'event_id'));
+  return jsonb_build_object('ok', true, 'result', 'granted', 'creditId', v_credit_id);
+end;
+$$;
+
+-- Fixed-window rate limiter.
+create or replace function {{schema}}.contour_rate_limit(p_bucket text, p_window_seconds integer, p_max integer)
+returns boolean
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_start timestamptz := to_timestamp(floor(extract(epoch from now()) / p_window_seconds) * p_window_seconds);
+  v_count integer;
+begin
+  insert into {{schema}}.rate_limits(bucket, window_start, count) values (p_bucket, v_start, 1)
+  on conflict (bucket, window_start) do update set count = {{schema}}.rate_limits.count + 1
+  returning count into v_count;
+  return v_count <= p_max;
+end;
+$$;
+
+-- Atomically redeem an OAuth authorization code (single use).
+create or replace function {{schema}}.contour_redeem_code(p_code_hash text) returns {{schema}}.oauth_codes
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_code {{schema}}.oauth_codes;
+begin
+  update {{schema}}.oauth_codes set used_at = now()
+  where code_hash = p_code_hash and used_at is null and expires_at > now()
+  returning * into v_code;
+  return v_code;
+end;
+$$;
+
+-- (Re-)consent: insert or bump revision, clear revocation, replace scopes.
+create or replace function {{schema}}.contour_upsert_grant(
+  p_subject text, p_tenant text, p_app text, p_client text, p_scopes text[], p_surfaces text[]
+) returns {{schema}}.oauth_grants
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_grant {{schema}}.oauth_grants;
+begin
+  insert into {{schema}}.oauth_grants(subject_id, tenant_id, app_id, client_id, scopes, surfaces)
+  values (p_subject, p_tenant, p_app, p_client, p_scopes, p_surfaces)
+  on conflict (subject_id, tenant_id, app_id, client_id) do update
+    set scopes = excluded.scopes,
+        surfaces = excluded.surfaces,
+        grant_revision = {{schema}}.oauth_grants.grant_revision + 1,
+        revoked_at = null,
+        updated_at = now()
+  returning * into v_grant;
+  -- Tokens from earlier revisions are dead anyway (revision check); mark them
+  -- revoked too so listings and introspection agree.
+  update {{schema}}.oauth_tokens set revoked_at = now()
+  where grant_id = v_grant.id and revoked_at is null and grant_revision < v_grant.grant_revision;
+  return v_grant;
+end;
+$$;
+
+-- Retention and reconciliation: expire unaccepted proposals after their TTL,
+-- keep decision/usage metadata 30 days, and release stale credit reservations.
+create or replace function {{schema}}.contour_retention() returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_expired integer;
+  v_decisions integer;
+  v_usage integer;
+  v_released integer;
+  v_rate integer;
+begin
+  update {{schema}}.proposals set status = 'EXPIRED', status_reason = 'ttl elapsed'
+  where status = 'READY' and expires_at <= now();
+  get diagnostics v_expired = row_count;
+
+  delete from {{schema}}.decision_events where created_at < now() - interval '30 days';
+  get diagnostics v_decisions = row_count;
+  delete from {{schema}}.usage_events where created_at < now() - interval '30 days';
+  get diagnostics v_usage = row_count;
+  delete from {{schema}}.rate_limits where window_start < now() - interval '1 day';
+  get diagnostics v_rate = row_count;
+
+  with stale as (
+    update {{schema}}.credits c set status = 'available', job_id = null, reserved_at = null
+    where c.status = 'reserved' and c.reserved_at < now() - interval '10 minutes'
+    returning c.*
+  ), led as (
+    insert into {{schema}}.credit_ledger(credit_id, tenant_id, app_id, subject_id, kind)
+    select s.id, s.tenant_id, s.app_id, s.subject_id, 'release' from stale s
+    returning 1
+  )
+  select count(*) into v_released from led;
+
+  return jsonb_build_object('expiredProposals', v_expired, 'deletedDecisions', v_decisions,
+    'deletedUsage', v_usage, 'releasedReservations', v_released, 'prunedRateWindows', v_rate);
+end;
+$$;
+
+-- ----------------------------------------------------------------- grants
+-- Service-role only. anon and authenticated hold nothing in {{schema}}.
+revoke all on schema {{schema}} from public, anon, authenticated;
+revoke all on all tables in schema {{schema}} from anon, authenticated;
+revoke all on all tables in schema {{schema}} from public;
+revoke all on all sequences in schema {{schema}} from public, anon, authenticated;
+revoke all on all functions in schema {{schema}} from public, anon, authenticated;
+grant usage on schema {{schema}} to service_role;
+grant all on all tables in schema {{schema}} to service_role;
+grant all on all sequences in schema {{schema}} to service_role;
+grant execute on all functions in schema {{schema}} to service_role;
+
+notify pgrst, 'reload schema';
+commit;

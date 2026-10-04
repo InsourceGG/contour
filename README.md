@@ -1,71 +1,59 @@
 # Contour
 
-**Controlled UI customization for companies, driven by users and their personal agents.**
+**Contour lets agents tailor your interface to each user, within your rules.**
 
-A company registers parts of its UI (components, approved variants, tokens, templates, permission-checked readers). A user, or the user's own AI agent connected over authenticated MCP, asks for a view that fits their task and expertise. Contour generates valid candidates from company code, and a bounded JEV judgment picks one. The user previews it and accepts it in the host app. The company keeps control of design, usability, data, and permissions, and gets an operator console to monitor, analyze, and switch agent access off.
+A company installs the Contour SDK and registers which parts of a screen may adapt: its own components, approved variants, layout templates and density. It locks what must never change and decides exactly which data agents may read. A user's own AI agent (for example Claude Code) connects over OAuth-protected MCP, either directly to the company or once through Contour Cloud for every company app. The agent proposes a view built only from the company's approved pieces. The dashboard shows the proposal live, and only the user can accept it.
 
-> Personalization changes presentation only. Authentication, authorization, business logic, data fetching, required actions, and security controls stay company-owned. The model selects among code-generated candidates. It can't introduce JavaScript, JSX, CSS, queries, credentials, or new business actions.
+> Personalization changes presentation only. Authentication, authorization, data, business actions and security controls stay company-owned. Agents and Contour Cloud can never save a view.
 
-## What's in this repo
+**Start here:**
+- `docs/DEMO.md`: the business and user run-through, where everything is, and logins.
+- `docs/EVIDENCE.md`: test and production evidence.
 
-| Layer | Where | Owns |
-|---|---|---|
-| Shared SDK contract | `src/sdk/` | Manifest and config types, closed schemas, registration validation, deterministic relational validation, candidate generation, diffs, hashing, the broker, and the React renderer (`src/sdk/react/`) |
-| Company integration (reference "ops-demo") | `src/host/` | Manifest (6 components, 3 templates × 3 breakpoints), candidate policy, React component implementations, server readers |
-| Host server broker | `src/server/` | Verified identity (`context.ts`), Supabase store with explicit owner filters (`store.ts`), JEV adapter (`jev.ts`), CSRF, Stripe |
-| MCP endpoint + OAuth 2.1 AS | `src/app/api/mcp`, `src/server/mcp`, `src/server/oauth`, `src/app/oauth/authorize`, `/.well-known/*` | Discoverable tools over the same broker, audience-bound scoped tokens, no commit privilege |
-| Preference store | `supabase/migrations/` | RLS on every table, transactional RPCs: proposal + credit consumption, approval + compare-and-swap commit, undo/reset, credit grant |
-| Host app | `src/app/` | Dashboard, authenticated preview/approval, settings (pins, history, decision record, connected agents), billing, operator console |
+## Live
 
-Required stack: **Supabase** (database, host auth, preferences, billing ledger), **Vercel** (frontend, broker, MCP endpoint, Stripe webhook, cron), and **Stripe** (test-mode Checkout for adaptation-job credits). Model selection uses **TypeSafe Jev** through the Vercel AI Gateway (`/v1/evaluate`).
+| App | URL |
+|---|---|
+| Contour Cloud: landing page, consumer accounts, project linking, one MCP for all projects, site-owner console | https://contour-sdk.vercel.app |
+| Northwind Support: demo company, integrated by the setup skill, unmetered | https://northwind-support-app.vercel.app |
+| Acme Operations: demo company, the reference integration, Stripe test credits | https://contour-acme.vercel.app |
 
-## The loop
+## Repository
 
 ```
-Personal agent (Claude Code) ──OAuth 2.1 + PKCE──▶ /api/mcp ──▶ broker ──▶ readers / proposal service
-   describe_surface · read_component_data · propose_view · get_view        (no commit tool)
-
-propose_view: closed-schema input → verified identity + membership → reserve 1 credit →
-  3 candidates from company policy (task × explanation level × explicit density, pins reapplied) →
-  full validation → JEV Choice {guided|balanced|dense|KEEP|ASK} → confidence floor →
-  READY proposal persisted + credit consumed in one transaction → preview URL
-
-Host browser ──session──▶ /preview/:id ──Accept (CSRF, same origin)──▶ contour_apply_proposal
-  (recheck owner, state, expiry, hash, manifest/policy/role, base revision → CAS → history → audit)
+packages/contour-sdk      SDK: contract types, validation, candidates, broker, JEV selector, React renderer
+                          (AdaptiveSurface, ViewPreview, LiveSurface, ConnectAgentPanel), OAuth 2.1 AS + MCP server,
+                          Supabase store, schema template + contour-migrate CLI, contract test kit
+apps/cloud                Contour Cloud (Next.js)
+apps/northwind            Northwind Support (Next.js, own cookie auth). Pristine version: git tag northwind-baseline
+apps/ops-demo             Acme Operations (Next.js, Supabase Auth, Stripe)
+apps/northwind-eval       headless harness that runs the setup skill on the baseline
+skills/contour-setup      the enterprise setup skill (8 phases, 5 owner checkpoints)
+scripts/demo/northwind.sh demo loop: fresh / reset / restore / recorded / status
+docs/                     build spec, design spec, plan, DEMO, EVIDENCE
 ```
 
-KEEP and ASK never create an approval. Timeouts, provider errors, malformed output, and low confidence all keep the current view and release the credit.
+Stack: Next.js 16, React 19, TypeScript, Tailwind 4, pnpm workspaces; Supabase (Postgres, RLS, Auth for Acme and Cloud); Vercel; Stripe test mode; TypeSafe Jev via the Vercel AI Gateway; Claude Code as the MCP client.
 
 ## Run locally
 
 ```bash
 pnpm install
-cp .env.example .env.local      # fill in Supabase, Stripe test, and AI Gateway keys
-supabase link --project-ref <ref>
-for f in supabase/migrations/*.sql; do supabase db query --linked -f "$f"; done
-pnpm seed                       # demo tenants, identities, synthetic data
-pnpm dev
+pnpm -F ops-demo dev      # http://localhost:3000 (needs apps/ops-demo/.env.local)
+pnpm -F cloud dev         # http://localhost:3100 (apps/cloud/.env.local; CLOUD_CLIENT_MODE=dcr and CLOUD_ALLOW_LOCAL_PROJECTS=1 for local projects)
+pnpm -F northwind dev     # http://localhost:3200 (apps/northwind/.env.local)
 ```
 
-Demo identities (synthetic, password `contour-demo-2026`): `alex@contour.demo` and `sam@contour.demo` (Acme members), `morgan@contour.demo` (Acme company operator), and `taylor@contour.demo` (Globex, used for cross-tenant tests).
-
-Connect Claude Code as the personal agent:
-
-```bash
-claude mcp add --transport http contour https://contour-sdk.vercel.app/api/mcp
-# then in Claude Code: /mcp → contour → Authenticate (signs you in to the host app and asks for consent)
-```
-
-See `docs/AGENT_GUIDE.md` for tools, scopes, preview semantics, and error codes, and `docs/SETUP_CHECKLIST.md` for company integration.
+Each app has a `.env.example`. Secrets live only in `.env.local` files and Vercel env.
 
 ## Tests
 
 ```bash
-pnpm exec vitest run tests/unit          # contract, validation, candidates, JEV adapter
-pnpm exec vitest run tests/integration   # real Supabase: broker loop, isolation, RLS, approval, races, recovery, injection, billing ledger, live JEV
-pnpm exec vitest run tests/oauth-mcp.test.ts   # OAuth + MCP against a running server (CONTOUR_TEST_URL)
-pnpm exec playwright test                # browser: preview/accept, state preservation, widths, keyboard
-pnpm tsx --conditions react-server scripts/eval-jev.ts 3 [--holdout]   # labeled JEV evaluation
+pnpm -F @contour/sdk exec vitest run                 # SDK unit + contract kit
+pnpm -F ops-demo exec vitest run tests/integration   # real Supabase: broker, RLS, approval, races, billing, live jobs, schema-scoped stores
+pnpm -F cloud exec vitest run                        # Cloud: vault, link state, forwarding, tools, routes
+pnpm -F northwind exec vitest run                    # Northwind: auth, team scoping, Contour integration
+node --test skills/contour-setup/scripts/*.test.mjs  # skill discovery + verify
 ```
 
-Acceptance evidence is recorded in `docs/EVIDENCE.md`.
+Production checks are listed at the end of `docs/DEMO.md`.

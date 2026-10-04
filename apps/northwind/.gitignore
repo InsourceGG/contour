@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.env*
+!.env.example
+*.tsbuildinfo
+coverage/
+.smoke/
+
+supabase/.temp/
+.screenshots/
+test-results/
+playwright-report/

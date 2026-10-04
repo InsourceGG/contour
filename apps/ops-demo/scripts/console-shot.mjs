@@ -1,0 +1,12 @@
+import { chromium } from "@playwright/test";
+const B = "https://contour-sdk.vercel.app";
+const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1440, height: 1000 } });
+await p.goto(`${B}/login`); await p.getByLabel("Email").fill("morgan@contour.demo"); await p.getByLabel("Password").fill("contour-demo-2026");
+await p.getByRole("button", { name: "Sign in", exact: true }).click(); await p.waitForURL(u => !u.pathname.startsWith("/login"));
+const r = await p.goto(`${B}/console`); console.log("console status", r.status());
+await p.screenshot({ path: "../../docs/evidence/console-1440.png", fullPage: true });
+const p2 = await b.newPage(); await p2.goto(`${B}/login`); await p2.getByLabel("Email").fill("alex@contour.demo"); await p2.getByLabel("Password").fill("contour-demo-2026");
+await p2.getByRole("button", { name: "Sign in", exact: true }).click(); await p2.waitForURL(u => !u.pathname.startsWith("/login"));
+await p2.goto(`${B}/console`); console.log("member sees:", (await p2.locator("main").innerText()).slice(0, 120).replace(/\n/g, " "));
+await p2.goto(`${B}/settings`); await p2.screenshot({ path: "../../docs/evidence/settings-1440.png", fullPage: true });
+await b.close();

@@ -1,0 +1,79 @@
+/* Contour integration styles, built only from Northwind's existing tokens. */
+
+/* Adaptive desk region: same 24px rhythm as the original desk layout. */
+.cs-grid { display: grid; gap: 24px; align-items: start; }
+.cs-region { display: grid; gap: 24px; align-content: start; min-width: 0; }
+.cs-slot { min-width: 0; }
+.cs-root[data-density="compact"] .cs-grid, .cs-root[data-density="compact"] .cs-region { gap: 18px; }
+.cs-slot[data-changed="true"] { outline: 2px solid var(--brand); outline-offset: 4px; border-radius: var(--radius); }
+
+/* A panel that failed to render (SDK ComponentBoundary). */
+.hc-failed { padding: 22px; background: var(--surface); border-radius: var(--radius); box-shadow: 0 0 0 1px var(--line); display: grid; gap: 8px; justify-items: start; }
+.hc-failed[data-required="true"] { background: var(--warning-soft); box-shadow: inset 3px 0 0 var(--warning), 0 0 0 1px var(--line); }
+.hc-title { font-size: .95rem; font-weight: 600; }
+.hc-failed .btn { min-height: 34px; padding: 6px 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 550; }
+
+/* Proposal preview (SDK ViewPreview). */
+.contour-preview { display: grid; gap: 24px; padding-block-end: 96px; }
+.contour-preview .panel { background: var(--surface); border-radius: var(--radius); box-shadow: 0 0 0 1px var(--line); }
+.contour-preview .section-title { font-size: 1.05rem; font-weight: 650; }
+.contour-preview .meta { color: var(--muted); font-size: 12px; }
+.contour-preview .seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.contour-preview .seg button, .contour-preview .seg label { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
+.contour-preview .seg button[aria-selected="true"], .contour-preview .seg label:has(input:checked) { background: var(--brand-soft); color: var(--brand); }
+.contour-preview .seg input { accent-color: var(--brand); }
+.vp-frame { overflow: hidden; padding: 16px; border-radius: var(--radius); background: var(--canvas); box-shadow: 0 0 0 1px var(--line); }
+.vp-canvas { pointer-events: none; }
+.contour-preview-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; margin: 14px 0 0; }
+.contour-preview-facts dt { color: var(--muted); }
+.contour-preview-facts dd { margin: 0; font-weight: 550; }
+.contour-preview-actions { position: sticky; inset-block-end: 0; z-index: 15; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 0; background: var(--canvas); border-block-start: 1px solid var(--line); }
+.contour-preview-actions .notice { width: 100%; margin: 0; }
+@media (min-width: 64rem) { .vp-tabs { display: none; } }
+@media (max-width: 63.99rem) { .vp-pane:not([data-active="true"]) { display: none; } }
+
+/* Connect an agent (SDK ConnectAgentPanel) and connected agents, in the settings aside. */
+.contour-connect { display: grid; gap: 12px; }
+.contour-connect-heading { margin: 0; }
+.contour-connect-intro, .contour-connect-cloud { color: var(--muted); max-width: 34ch; }
+.contour-connect-command { display: grid; gap: 8px; }
+.contour-connect-code { margin: 0; padding: 12px; overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.contour-connect-copy { justify-self: start; min-height: 34px; padding: 6px 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 550; }
+.contour-agents { display: grid; gap: 12px; margin-block-start: 20px; padding: 0; list-style: none; }
+.contour-agents li { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.contour-agents strong { display: block; font-weight: 550; overflow-wrap: anywhere; }
+
+/* Admin agent access controls. */
+.contour-admin-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-block-start: 18px; }
+
+/* Live proposals on the desk (SDK LiveSurface), in Northwind's tokens: white
+   surfaces, ink-blue accent, the desk's own button shapes and skeleton tone. */
+.desk-live {
+  --color-ink: var(--ink);
+  --color-ink-2: var(--muted);
+  --color-surface: var(--surface);
+  --color-rule: var(--line);
+  --color-rule-strong: var(--line);
+  --color-accent: var(--brand);
+  --color-critical: var(--danger);
+  --contour-radius: 7px;
+  --contour-panel-radius: var(--radius);
+}
+.desk-live .contour-live-bar { gap: 12px 24px; margin-block-end: 24px; padding: 14px 16px 14px 20px; border: 0; border-radius: var(--radius); background: var(--surface); box-shadow: inset 3px 0 0 var(--brand), 0 0 0 1px var(--line); font-size: 14px; }
+.desk-live .contour-live-copy p:first-child { font-weight: 600; color: var(--ink); }
+.desk-live .contour-live-detail { color: var(--muted); font-size: 13px; padding-block-start: 2px; }
+.desk-live .contour-live-error { color: var(--danger); font-size: 13px; }
+.desk-live .contour-live-actions { gap: 10px; }
+.desk-live .contour-live-actions button { min-height: 40px; padding: 9px 16px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 550; }
+.desk-live .contour-live-actions button:hover:not(:disabled) { background: var(--canvas); }
+.desk-live .contour-live-actions .contour-live-primary { background: var(--brand); border-color: transparent; color: white; box-shadow: inset 0 1px 0 oklch(1 0 0 / .1); }
+.desk-live .contour-live-actions .contour-live-primary:hover:not(:disabled) { background: oklch(.365 .13 260); }
+.desk-live .contour-live-actions a { color: var(--brand); font-size: 13px; font-weight: 500; }
+.desk-live .contour-live-actions :is(button, a):focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.desk-live .cs-slot[data-changed="true"] { outline: 2px solid var(--brand); outline-offset: 4px; border-radius: var(--radius); }
+.desk-live .contour-live-badge { top: -11px; right: 14px; padding: 2px 8px; border: 0; border-radius: 5px; background: var(--brand); color: white; font-size: 11px; font-weight: 600; letter-spacing: .01em; }
+.desk-live .contour-live-skeleton { padding: 22px; border-radius: var(--radius); background: color-mix(in oklab, var(--surface) 97%, transparent); box-shadow: 0 0 0 1px var(--line); }
+.desk-live .contour-live-skeleton span { height: 10px; margin-block-end: 14px; border-radius: 5px; background: oklch(.925 .006 258); opacity: 1; }
+.desk-live .contour-live-skeleton span:first-child { height: 14px; margin-block-end: 26px; }
+.desk-live .contour-live-skeleton:after { background: linear-gradient(100deg, transparent 25%, oklch(1 0 0 / .7) 50%, transparent 75%); }
+@media (forced-colors: active) { .desk-live .contour-live-bar { border: 1px solid CanvasText; } .desk-live .contour-live-badge { border: 1px solid CanvasText; } }
