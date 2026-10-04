@@ -67,3 +67,18 @@ A separate review pass looked for exploitable issues in the broker, the store, t
 | A concurrent identical replay could leave a credit reserved for 10 minutes | Released immediately on replay. |
 | Undo ignored manual pins | Undo validates against current pins. |
 | Malformed Basic auth returned 500 | Returns 401 `invalid_client`. |
+
+---
+
+# Multi-project build (Contour Cloud, Northwind, setup skill), 3 October 2026
+
+| Item | Evidence |
+|---|---|
+| Monorepo + SDK extraction | All prior suites stayed green after moving the code into `packages/contour-sdk` with a config-driven server. Two server instances share no state (reviewed). |
+| Setup skill, real run | A headless Claude Code session ran `skills/contour-setup` on the pristine Northwind (`docs/evidence/skill-run-northwind.jsonl`, redacted). The five owner checkpoints were asked and answered in order: (1) surface + locks, (2) reader fields, (3) roles + exact SQL with rollback, (4) register (skipped), (5) deploy (no). The database steps blocked by the harness were run by the owner, as the skill instructed. The result passed typecheck, lint, build, the contract kit and 44 tests. It is committed as tag `northwind-integrated`. |
+| Demo loop | `pnpm demo:northwind:fresh`, `reset` and `restore` were exercised against the real database, and the drop/install are idempotent. Contour tables live in the dedicated `northwind_contour` schema, and the host changes ship with exact rollback SQL. |
+| Northwind on production | `apps/northwind/tests/e2e/agent-flow.spec.ts` against https://northwind-support-app.vercel.app: 3/3 pass. (a) A host proposal goes live, unmetered, and Accept persists. (b) Unauthenticated MCP is challenged and OAuth discovery is served. (c) An agent connects through Northwind's own login and consent, and its proposal appears live on Riley's desk. |
+| Contour Cloud on production | `apps/cloud/scripts/prod-check-cloud.mts` passes. Jordan signs in to Cloud, links Northwind via Riley's Northwind login and consent, and receives a Cloud MCP token (DCR + PKCE). Through Cloud, `list_projects` returns Northwind, `describe_surface` works, and `propose_view` returns READY with a Northwind-hosted preview URL. Both companies are registered and domain-verified in Cloud. |
+| Live in-dashboard proposals | Skeletons appear while the agent works, then the proposal appears in place with "Changed" markers and inline Accept/Keep. Drafts survive the swap. Browser-tested on Acme and Northwind. |
+| Reviews | Each task got a spec and quality review. The independent security reviews of Cloud and the skill ended with all Important findings fixed and re-reviewed. Among them: the per-tenant kill switch, no OAuth open redirect, a pinned metadata fetch, session-bound CSRF, a production-guarded local mode, the verified host shown before linking, and strict skill checkpoints. |
+| Production fix found by testing | Cloud's `Referrer-Policy: no-referrer` made browsers send `Origin: null` on its own form posts, which the CSRF origin check rejected. It is now `strict-origin-when-cross-origin`. |
